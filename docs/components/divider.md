@@ -2,8 +2,6 @@
 
 Material Design 3 divider component for visual separation.
 
-![Divider Example](./screenshots/divider.png)
-
 ## Types
 
 | Type | Description |

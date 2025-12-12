@@ -2,8 +2,6 @@
 
 Material Design 3 progress indicator components.
 
-![Progress Example](./screenshots/progress.png)
-
 ## Types
 
 | Type | Description |

@@ -2,8 +2,6 @@
 
 Material Design 3 tab navigation component.
 
-![Tabs Example](./screenshots/tabs.png)
-
 ## Types
 
 | Type | Description |

@@ -2,8 +2,6 @@
 
 Material Design 3 list component with selection support.
 
-![List Example](./screenshots/lists.png)
-
 ## Features
 
 - Single and multi-select modes

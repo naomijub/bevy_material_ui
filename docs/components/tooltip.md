@@ -2,8 +2,6 @@
 
 Material Design 3 tooltip component for contextual hints.
 
-![Tooltip Example](./screenshots/tooltips.png)
-
 ## Types
 
 | Type | Description |

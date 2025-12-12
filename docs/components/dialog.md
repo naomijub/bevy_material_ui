@@ -2,8 +2,6 @@
 
 Material Design 3 dialog component for modal interactions.
 
-![Dialog Example](./screenshots/dialogs.png)
-
 ## Types
 
 | Type | Description |

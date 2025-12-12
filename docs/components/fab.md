@@ -2,8 +2,6 @@
 
 Material Design 3 floating action button for primary actions.
 
-![FAB Example](./screenshots/fabs.png)
-
 ## Variants
 
 | Variant | Description | Size |

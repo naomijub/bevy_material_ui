@@ -2,8 +2,6 @@
 
 Material Design 3 chips for selections, filters, and actions.
 
-![Chip Example](./screenshots/chips.png)
-
 ## Variants
 
 | Variant | Description | Use Case |

@@ -2,8 +2,6 @@
 
 Material Design 3 icon-only button component.
 
-![Icon Button Example](./screenshots/icon_buttons.png)
-
 ## Variants
 
 | Variant | Description |

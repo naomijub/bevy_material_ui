@@ -69,29 +69,20 @@ fn my_system(theme: Res<MaterialTheme>) {
 }
 ```
 
-## Screenshots
+## Interactive Showcase
 
-Component screenshots can be automatically captured using the documentation capture tool:
-
-```bash
-cd tests/ui_tests
-
-# Capture all component sections
-python capture_docs.py
-
-# Capture a specific section
-python capture_docs.py --section button
-
-# List available sections
-python capture_docs.py --list
-```
-
-Screenshots are saved to `docs/components/screenshots/`.
-
-To manually view components, run the interactive showcase:
+To see all components in action, run the interactive showcase:
 
 ```bash
 cargo run --example showcase
 ```
 
-Navigate through the sidebar to see each component category.
+The showcase provides a comprehensive demo of every component with:
+- Live interaction and state changes
+- Multiple variants and configurations  
+- Theme switching (light/dark mode)
+- Responsive layout examples
+
+Navigate through the sidebar to explore each component category.
+
+> 📺 **Video Demo**: For a walkthrough of the UI components, see the [demo video](https://github.com/user/repo/releases) (coming soon).

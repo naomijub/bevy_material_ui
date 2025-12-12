@@ -2,8 +2,6 @@
 
 Material Design 3 radio button component for single selection.
 
-![Radio Example](./screenshots/radio_buttons.png)
-
 ## Basic Usage
 
 ```rust

@@ -2,8 +2,6 @@
 
 Material Design 3 button component with multiple variants and state support.
 
-![Button Example](./screenshots/buttons.png)
-
 ## Variants
 
 | Variant | Description | Use Case |

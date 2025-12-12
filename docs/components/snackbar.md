@@ -2,8 +2,6 @@
 
 Material Design 3 snackbar component for brief notifications.
 
-![Snackbar Example](./screenshots/snackbars.png)
-
 ## Basic Usage
 
 ```rust

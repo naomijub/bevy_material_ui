@@ -2,8 +2,6 @@
 
 Material Design 3 text input component.
 
-![Text Field Example](./screenshots/text_fields.png)
-
 ## Variants
 
 | Variant | Description |

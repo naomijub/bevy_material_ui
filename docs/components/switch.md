@@ -2,8 +2,6 @@
 
 Material Design 3 toggle switch component.
 
-![Switch Example](./screenshots/switches.png)
-
 ## Basic Usage
 
 ```rust

@@ -2,8 +2,6 @@
 
 Material Design 3 dropdown menu component.
 
-![Menu Example](./screenshots/menus.png)
-
 ## Basic Usage
 
 ```rust

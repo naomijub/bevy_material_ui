@@ -2,8 +2,6 @@
 
 Material Design 3 checkbox component with animation support.
 
-![Checkbox Example](./screenshots/checkboxes.png)
-
 ## States
 
 | State | Description |

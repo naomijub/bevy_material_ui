@@ -2,8 +2,6 @@
 
 Material Design 3 dropdown select component.
 
-![Select Example](./screenshots/select.png)
-
 ## Variants
 
 | Variant | Description |

@@ -2,8 +2,6 @@
 
 Material Design 3 card component for containing content and actions.
 
-![Card Example](./screenshots/cards.png)
-
 ## Variants
 
 | Variant | Description | Use Case |

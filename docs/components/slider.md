@@ -2,8 +2,6 @@
 
 Material Design 3 slider component for range selection.
 
-![Slider Example](./screenshots/sliders.png)
-
 ## Types
 
 | Type | Description |
