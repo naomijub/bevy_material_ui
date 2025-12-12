@@ -2,6 +2,13 @@
 
 A Material Design 3 UI library for Bevy.
 
+## Documentation
+
+- Documentation index: [docs/README.md](docs/README.md)
+- Developer guide: [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md)
+- Component docs: [docs/components/](docs/components/)
+- Run the interactive showcase: `cargo run --example showcase`
+
 ## Features
 
 - **Material Design 3 Components**: Buttons, FABs, Cards, Checkboxes, Switches, Radio Buttons, Sliders, Text Fields, Dialogs, Lists, Menus, Tabs, Progress Indicators, and more

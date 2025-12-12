@@ -2,6 +2,9 @@
 
 A comprehensive Material Design 3 component library for Bevy game engine.
 
+- Back to main README: [../README.md](../README.md)
+- Developer guide: [./DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md)
+
 ## Components
 
 | Component | Description | Documentation |
