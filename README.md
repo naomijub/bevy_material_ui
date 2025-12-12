@@ -1,3 +1,5 @@
+[![Bevy Material UI demo video](https://img.youtube.com/vi/l7PdTGuuqLU/hqdefault.jpg)](https://youtu.be/l7PdTGuuqLU)
+
 # bevy_material_ui
 
 A Material Design 3 UI library for Bevy.
