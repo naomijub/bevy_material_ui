@@ -103,10 +103,41 @@ tests/ui_tests/
 │   ├── screenshots/
 │   ├── diffs/           # Visual diff images
 │   └── reports/
-├── quick_test.py
-├── visual_diff.py
+├── quick_test.py        # Main test runner with telemetry
+├── capture_docs.py      # Documentation screenshot capture
+├── visual_diff.py       # Screenshot comparison utilities
 └── README.md
 ```
+
+## Documentation Screenshots
+
+To capture clean screenshots for component documentation:
+
+```bash
+cd tests/ui_tests
+
+# Capture all component sections
+python capture_docs.py
+
+# Capture a specific section
+python capture_docs.py --section button
+python capture_docs.py --section checkbox
+
+# List available sections
+python capture_docs.py --list
+
+# Capture without cropping sidebar
+python capture_docs.py --no-crop
+
+# Use already running showcase app
+python capture_docs.py --no-start
+```
+
+Screenshots are saved to `docs/components/screenshots/` with names matching the component:
+- `button.png`
+- `checkbox.png`
+- `slider.png`
+- etc.
 
 ## Limitations
 
