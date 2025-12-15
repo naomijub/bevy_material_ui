@@ -34,6 +34,20 @@ use std::collections::HashSet;
 use crate::theme::MaterialTheme;
 use crate::telemetry::{InsertTestIdIfExists, TestId};
 
+#[derive(Debug)]
+struct InsertVisibilityIfExists {
+    entity: Entity,
+    visibility: Visibility,
+}
+
+impl Command for InsertVisibilityIfExists {
+    fn apply(self, world: &mut World) {
+        if let Ok(mut entity) = world.get_entity_mut(self.entity) {
+            entity.insert(self.visibility);
+        }
+    }
+}
+
 /// Plugin for scroll container functionality
 pub struct ScrollPlugin;
 
@@ -114,14 +128,24 @@ fn ensure_scrollbars_system(
         // Toggle visibility based on current container settings.
         // We do this via commands so we don't require Visibility to already exist.
         for track in existing_tracks_v {
-            commands
-                .entity(track)
-                .insert(if wants_v { Visibility::Visible } else { Visibility::Hidden });
+            commands.queue(InsertVisibilityIfExists {
+                entity: track,
+                visibility: if wants_v {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                },
+            });
         }
         for track in existing_tracks_h {
-            commands
-                .entity(track)
-                .insert(if wants_h { Visibility::Visible } else { Visibility::Hidden });
+            commands.queue(InsertVisibilityIfExists {
+                entity: track,
+                visibility: if wants_h {
+                    Visibility::Visible
+                } else {
+                    Visibility::Hidden
+                },
+            });
         }
     }
 }
