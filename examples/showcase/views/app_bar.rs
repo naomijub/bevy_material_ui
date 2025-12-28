@@ -2,9 +2,10 @@
 
 use bevy::prelude::*;
 use bevy_material_ui::icons::{
-    ICON_ADD, ICON_CHECK, ICON_CLOSE, ICON_MENU, ICON_MORE_VERT, ICON_SEARCH,
+    ICON_ADD, ICON_CHECK, ICON_CLOSE, ICON_MENU, ICON_SEARCH,
 };
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::text_field::{spawn_text_field_control, InputType};
 
 use crate::showcase::common::*;
 
@@ -86,43 +87,33 @@ pub fn spawn_app_bar_section(
                         TextColor(theme.on_surface),
                     ));
 
-                    // Top app bar
-                    col.spawn((
-                        Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Px(64.0),
-                            padding: UiRect::horizontal(Val::Px(16.0)),
-                            align_items: AlignItems::Center,
-                            column_gap: Val::Px(16.0),
-                            ..default()
+                    // Top app bar (real library implementation) with a right-side slot.
+                    col.spawn_top_app_bar_with_right_content(
+                        theme,
+                        TopAppBarBuilder::new("Page Title")
+                            .small()
+                            .with_navigation("menu")
+                            .add_action("more_vert", "more"),
+                        |right| {
+                            right
+                                .spawn(Node {
+                                    width: Val::Px(240.0),
+                                    ..default()
+                                })
+                                .with_children(|slot| {
+                                    spawn_text_field_control(
+                                        slot,
+                                        theme,
+                                        TextFieldBuilder::new()
+                                            .label("Search")
+                                            .placeholder("Search")
+                                            .input_type(InputType::Text)
+                                            .outlined()
+                                            .width(Val::Percent(100.0)),
+                                    );
+                                });
                         },
-                        BackgroundColor(theme.surface),
-                    ))
-                    .with_children(|bar| {
-                        spawn_standard_icon_button_codepoint(bar, theme, &icon_font, ICON_MENU);
-
-                        // Title
-                        bar.spawn((
-                            Text::new("Page Title"),
-                            TextFont {
-                                font_size: 22.0,
-                                ..default()
-                            },
-                            TextColor(theme.on_surface),
-                            Node {
-                                flex_grow: 1.0,
-                                ..default()
-                            },
-                        ));
-
-                        // Actions
-                        spawn_standard_icon_button_codepoint(
-                            bar,
-                            theme,
-                            &icon_font,
-                            ICON_MORE_VERT,
-                        );
-                    });
+                    );
 
                     col.spawn((
                         Text::new("Bottom App Bar"),
@@ -204,25 +195,22 @@ pub fn spawn_app_bar_section(
             spawn_code_block(
                 section,
                 theme,
-                r#"// Create a top app bar
-let app_bar = TopAppBar::new()
-    .with_variant(TopAppBarVariant::Small)
-    .title("My App")
-    .navigation_icon("menu");
-
-commands.spawn((
-    app_bar,
-    Node { 
-        width: Val::Percent(100.0), 
-        height: Val::Px(64.0),
-        ..default() 
+                r#"// Top App Bar with navigation, actions, and right-side content
+parent.spawn_top_app_bar_with_right_content(
+    theme,
+    TopAppBarBuilder::new("Page Title")
+        .small()
+        .with_navigation("menu")
+        .add_action("more_vert", "more"),
+    |right| {
+        // Spawn any extra widgets here (e.g. a search field)
     },
-    BackgroundColor(theme.surface),
-));
+);
 
-// Create a bottom app bar
-let bottom_bar = BottomAppBar::new()
-    .actions(vec!["search", "share", "delete"]);"#,
+// Bottom App Bar
+parent.spawn_bottom_app_bar(theme, |bar| {
+    // Spawn actions + optional FAB
+});"#,
             );
         });
 }

@@ -395,9 +395,11 @@ pub mod prelude {
 
     // App Bar
     pub use crate::app_bar::{
-        AppBarPlugin, BottomAppBar, BottomAppBarBuilder, SpawnAppBarChild, TopAppBar,
-        TopAppBarBuilder, TopAppBarVariant, BOTTOM_APP_BAR_HEIGHT, TOP_APP_BAR_HEIGHT_LARGE,
-        TOP_APP_BAR_HEIGHT_MEDIUM, TOP_APP_BAR_HEIGHT_SMALL,
+        spawn_top_app_bar, spawn_top_app_bar_with_right_content, AppBarActionEvent,
+        AppBarNavigationEvent, AppBarPlugin, BottomAppBar, BottomAppBarBuilder, SpawnAppBarChild,
+        SpawnTopAppBarWithRightContentChild, TopAppBar, TopAppBarBuilder, TopAppBarVariant,
+        BOTTOM_APP_BAR_HEIGHT, TOP_APP_BAR_HEIGHT_LARGE, TOP_APP_BAR_HEIGHT_MEDIUM,
+        TOP_APP_BAR_HEIGHT_SMALL,
     };
 
     // Badge

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3 (2025-12-27)
+
+- App Bar: add `spawn_top_app_bar_with_right_content` and `SpawnTopAppBarWithRightContentChild` for a proper MD3 Top App Bar with a right-side custom content slot.
+- Showcase: update the App Bars view to demonstrate the new API.
+
 ## 0.2.1 (2025-12-17)
 
 - Examples: `all_icon_buttons` now shows tooltips with icon names (when available).
