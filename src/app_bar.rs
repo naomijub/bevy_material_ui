@@ -6,6 +6,7 @@
 //! Reference: <https://m3.material.io/components/app-bars/overview>
 
 use bevy::prelude::*;
+use bevy::ecs::relationship::Relationship;
 
 use crate::{
     icons::{IconStyle, MaterialIcon},
@@ -877,37 +878,53 @@ pub fn spawn_top_app_bar_with_right_content(
                     ..default()
                 })
                 .with_children(|left| {
-                    // Navigation icon
-                    if let Some(icon) = &nav_icon {
+                    // Make the navigation area (icon + title) one large clickable target.
+                    // This matches user expectations that clicking the title behaves like "Back",
+                    // and it provides a clear hover target.
+                    if nav_icon.is_some() {
                         left.spawn((
                             AppBarNavigation,
                             Button,
                             Interaction::None,
                             RippleHost::new(),
+                            GlobalZIndex(1002),
                             Node {
-                                width: Val::Px(48.0),
                                 height: Val::Px(48.0),
-                                justify_content: JustifyContent::Center,
+                                flex_direction: FlexDirection::Row,
                                 align_items: AlignItems::Center,
+                                padding: UiRect::horizontal(Val::Px(8.0)),
+                                column_gap: Val::Px(Spacing::EXTRA_SMALL),
                                 ..default()
                             },
                             BackgroundColor(Color::NONE),
                             BorderRadius::all(Val::Px(CornerRadius::FULL)),
                         ))
                         .with_children(|btn| {
-                            if let Some(icon) = MaterialIcon::from_name(icon) {
+                            if let Some(icon_name) = &nav_icon {
+                                if let Some(icon) = MaterialIcon::from_name(icon_name) {
+                                    btn.spawn((
+                                        icon,
+                                        IconStyle::outlined()
+                                            .with_color(theme.on_surface)
+                                            .with_size(24.0),
+                                    ));
+                                }
+                            }
+
+                            if variant == TopAppBarVariant::Small {
                                 btn.spawn((
-                                    icon,
-                                    IconStyle::outlined()
-                                        .with_color(theme.on_surface)
-                                        .with_size(24.0),
+                                    AppBarTitle,
+                                    Text::new(&title),
+                                    TextFont {
+                                        font_size: 22.0,
+                                        ..default()
+                                    },
+                                    TextColor(title_color),
                                 ));
                             }
                         });
-                    }
-
-                    // Title (for Small variant)
-                    if variant == TopAppBarVariant::Small {
+                    } else if variant == TopAppBarVariant::Small {
+                        // No navigation: just show the title.
                         left.spawn((
                             AppBarTitle,
                             Text::new(&title),
@@ -958,6 +975,7 @@ pub fn spawn_top_app_bar_with_right_content(
                                 Button,
                                 Interaction::None,
                                 RippleHost::new(),
+                                GlobalZIndex(1002),
                                 Node {
                                     width: Val::Px(48.0),
                                     height: Val::Px(48.0),
@@ -999,26 +1017,60 @@ fn top_app_bar_scroll_system(
 
 /// System to handle app bar interactions
 fn app_bar_interaction_system(
-    nav_buttons: Query<(&Interaction, &ChildOf), (Changed<Interaction>, With<AppBarNavigation>)>,
-    action_buttons: Query<(&Interaction, &AppBarActionButton, &ChildOf), Changed<Interaction>>,
+    theme: Res<MaterialTheme>,
+    nav_buttons: Query<(Entity, &Interaction), (Changed<Interaction>, With<AppBarNavigation>)>,
+    action_buttons: Query<(Entity, &Interaction, &AppBarActionButton), Changed<Interaction>>,
+    parents: Query<&ChildOf>,
     app_bars: Query<Entity, With<TopAppBar>>,
+    mut bgs: Query<&mut BackgroundColor>,
     mut nav_events: MessageWriter<AppBarNavigationEvent>,
     mut action_events: MessageWriter<AppBarActionEvent>,
 ) {
+    let find_app_bar_ancestor = |mut cursor: Entity| {
+        for _ in 0..32 {
+            if app_bars.get(cursor).is_ok() {
+                return Some(cursor);
+            }
+            if let Ok(parent) = parents.get(cursor) {
+                cursor = parent.get();
+            } else {
+                break;
+            }
+        }
+        None
+    };
+
     // Handle navigation clicks
-    for (interaction, parent) in nav_buttons.iter() {
+    for (entity, interaction) in nav_buttons.iter() {
+        if let Ok(mut bg) = bgs.get_mut(entity) {
+            *bg = match interaction {
+                Interaction::Hovered | Interaction::Pressed => {
+                    BackgroundColor(theme.surface_container_highest)
+                }
+                Interaction::None => BackgroundColor(Color::NONE),
+            };
+        }
+
         if *interaction == Interaction::Pressed {
-            // Find the app bar ancestor
-            if let Ok(app_bar) = app_bars.get(parent.parent()) {
+            if let Some(app_bar) = find_app_bar_ancestor(entity) {
                 nav_events.write(AppBarNavigationEvent { app_bar });
             }
         }
     }
 
     // Handle action clicks
-    for (interaction, action, parent) in action_buttons.iter() {
+    for (entity, interaction, action) in action_buttons.iter() {
+        if let Ok(mut bg) = bgs.get_mut(entity) {
+            *bg = match interaction {
+                Interaction::Hovered | Interaction::Pressed => {
+                    BackgroundColor(theme.surface_container_highest)
+                }
+                Interaction::None => BackgroundColor(Color::NONE),
+            };
+        }
+
         if *interaction == Interaction::Pressed {
-            if let Ok(app_bar) = app_bars.get(parent.parent()) {
+            if let Some(app_bar) = find_app_bar_ancestor(entity) {
                 action_events.write(AppBarActionEvent {
                     app_bar,
                     action: action.id.clone(),
