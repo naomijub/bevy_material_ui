@@ -7,22 +7,29 @@ pub mod navigation;
 #[path = "views/mod.rs"]
 pub mod views;
 
+#[path = "tab_state.rs"]
+pub mod tab_state;
+
 use bevy::asset::{AssetPlugin, RenderAssetUsages};
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use bevy::ui::{ComputedNode, OverflowAxis, PositionType, ScrollPosition, UiGlobalTransform};
-use bevy_material_ui::loading_indicator::ShapeMorphMaterial;
+use bevy::ui::{ComputedNode, OverflowAxis, ScrollPosition, UiGlobalTransform};
 use bevy_material_ui::prelude::*;
 use bevy_material_ui::text_field::InputType;
 use bevy_material_ui::theme::ThemeMode;
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use common::*;
 use navigation::*;
 use views::*;
 
+pub use common::ComponentSection;
+pub use tab_state::TabStateCache;
+
 use bevy_material_ui::list::MaterialListItem;
+
+#[derive(Resource, Clone)]
+struct IconFont(Handle<Font>);
 
 #[derive(Component)]
 struct SpinningDice;
@@ -44,13 +51,6 @@ struct ThemeRebuildGate {
     initialized: bool,
 }
 
-#[derive(Resource, Default)]
-struct LayoutRebuildGate {
-    initialized: bool,
-    last_width: Option<WindowWidthClass>,
-    last_height: Option<WindowHeightClass>,
-}
-
 #[derive(Resource)]
 struct ListDemoOptions {
     mode: ListSelectionMode,
@@ -64,42 +64,21 @@ impl Default for ListDemoOptions {
     }
 }
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 struct DialogDemoOptions {
     position: DialogPosition,
-    modal: bool,
-}
-
-impl Default for DialogDemoOptions {
-    fn default() -> Self {
-        Self {
-            position: DialogPosition::default(),
-            modal: true,
-        }
-    }
-}
-
-#[derive(Resource, Default)]
-struct ShowcaseTextFieldCache {
-    // Keyed by label text (sufficient for the showcase’s fixed set of fields).
-    by_label: HashMap<String, String>,
-}
-
-/// Stores tab selections across UI rebuilds
-#[derive(Resource, Default)]
-pub struct TabStateCache {
-    /// Maps section name to selected tab index
-    pub selections: HashMap<ComponentSection, usize>,
 }
 
 pub fn run() {
     let asset_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets");
 
     App::new()
-        .add_plugins(DefaultPlugins.set(AssetPlugin {
-            file_path: asset_root.to_string_lossy().to_string(),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins.set(AssetPlugin {
+                file_path: asset_root.to_string_lossy().to_string(),
+                ..default()
+            }),
+        )
         .add_plugins(MaterialUiPlugin)
         .init_resource::<ShowcaseThemeSelection>()
         // Default seed theme (Material You purple)
@@ -113,13 +92,9 @@ pub fn run() {
         .init_resource::<TooltipDemoOptions>()
         .init_resource::<ListDemoOptions>()
         .init_resource::<DialogDemoOptions>()
-        .init_resource::<ShowcaseTextFieldCache>()
         .init_resource::<TabStateCache>()
         .init_resource::<ThemeRebuildGate>()
-        .init_resource::<LayoutRebuildGate>()
         .add_systems(Startup, (setup_3d_scene, setup_ui, setup_telemetry))
-        // Restore cached values before the MaterialUiPlugin text-field systems run.
-        .add_systems(PreUpdate, restore_showcase_text_field_values_system)
         .add_systems(
             Update,
             (
@@ -137,43 +112,25 @@ pub fn run() {
                 tooltip_demo_apply_system,
                 tooltip_demo_style_system,
                 menu_demo_system,
-                datetime_picker_demo_system,
+                date_picker_demo_system,
+                time_picker_demo_system,
             ),
         )
-        .add_systems(
-            Update,
-            (
-                sidebar_scroll_telemetry_system,
-                main_scroll_telemetry_system,
-            ),
-        )
+        .add_systems(Update, (sidebar_scroll_telemetry_system, main_scroll_telemetry_system))
         .add_systems(Update, email_validation_system)
-        // Cache changes after UI input has been processed.
-        .add_systems(PostUpdate, cache_showcase_text_field_changes_system)
         .add_systems(
             Update,
             (
                 dialog_demo_position_options_system,
                 dialog_demo_position_style_system,
                 dialog_demo_apply_position_system,
-                dialog_demo_modal_options_system,
-                dialog_demo_modal_style_system,
-                dialog_demo_apply_modal_system,
                 dialog_demo_open_close_system,
                 list_demo_mode_options_system,
                 list_demo_mode_style_system,
                 list_demo_apply_selection_mode_system,
                 theme_mode_option_system,
                 theme_seed_option_system,
-                attach_theme_seed_text_field_system.before(theme_seed_text_field_system),
-                theme_seed_text_field_system
-                    .before(rebuild_ui_on_theme_change_system)
-                    .before(rebuild_ui_on_size_class_change_system),
-                cache_tab_state_system
-                    .before(rebuild_ui_on_theme_change_system)
-                    .before(rebuild_ui_on_size_class_change_system),
                 rebuild_ui_on_theme_change_system,
-                rebuild_ui_on_size_class_change_system,
             ),
         )
         .add_systems(
@@ -216,14 +173,8 @@ fn ensure_automation_test_ids_clickables_system(
     chips: Query<(Entity, &UiGlobalTransform), (With<MaterialChip>, Without<TestId>)>,
     fabs: Query<(Entity, &UiGlobalTransform), (With<MaterialFab>, Without<TestId>)>,
     badges: Query<(Entity, &UiGlobalTransform), (With<MaterialBadge>, Without<TestId>)>,
-    progress_linear: Query<
-        (Entity, &UiGlobalTransform),
-        (With<MaterialLinearProgress>, Without<TestId>),
-    >,
-    progress_circular: Query<
-        (Entity, &UiGlobalTransform),
-        (With<MaterialCircularProgress>, Without<TestId>),
-    >,
+    progress_linear: Query<(Entity, &UiGlobalTransform), (With<MaterialLinearProgress>, Without<TestId>)>,
+    progress_circular: Query<(Entity, &UiGlobalTransform), (With<MaterialCircularProgress>, Without<TestId>)>,
     cards: Query<(Entity, &UiGlobalTransform), (With<MaterialCard>, Without<TestId>)>,
     dividers: Query<(Entity, &UiGlobalTransform), (With<MaterialDivider>, Without<TestId>)>,
     icons: Query<(Entity, &UiGlobalTransform), (With<MaterialIcon>, Without<TestId>)>,
@@ -239,7 +190,7 @@ fn ensure_automation_test_ids_clickables_system(
                 buttons.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("button_{}", i)),
                 });
@@ -252,7 +203,7 @@ fn ensure_automation_test_ids_clickables_system(
                 .collect();
             icons.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in icons.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("app_bar_icon_{}", i)),
                 });
@@ -262,7 +213,7 @@ fn ensure_automation_test_ids_clickables_system(
                 fabs.iter().map(|(e, t)| (e, t.translation.y)).collect();
             fab_items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in fab_items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("app_bar_fab_{}", i)),
                 });
@@ -273,7 +224,7 @@ fn ensure_automation_test_ids_clickables_system(
                 chips.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("chip_{}", i)),
                 });
@@ -284,7 +235,7 @@ fn ensure_automation_test_ids_clickables_system(
                 fabs.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("fab_{}", i)),
                 });
@@ -295,7 +246,7 @@ fn ensure_automation_test_ids_clickables_system(
                 badges.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("badge_{}", i)),
                 });
@@ -308,7 +259,7 @@ fn ensure_automation_test_ids_clickables_system(
                 .collect();
             linear.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in linear.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("progress_linear_{}", i)),
                 });
@@ -320,7 +271,7 @@ fn ensure_automation_test_ids_clickables_system(
                 .collect();
             circular.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in circular.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("progress_circular_{}", i)),
                 });
@@ -331,7 +282,7 @@ fn ensure_automation_test_ids_clickables_system(
                 cards.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("card_{}", i)),
                 });
@@ -342,7 +293,7 @@ fn ensure_automation_test_ids_clickables_system(
                 dividers.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("divider_{}", i)),
                 });
@@ -353,7 +304,7 @@ fn ensure_automation_test_ids_clickables_system(
                 icons.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("icon_{}", i)),
                 });
@@ -366,66 +317,13 @@ fn ensure_automation_test_ids_clickables_system(
                 .collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                commands.queue(InsertTestIdIfExists {
+                    commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("icon_button_{}", i)),
                 });
             }
         }
         _ => {}
-    }
-}
-
-fn cache_showcase_text_field_changes_system(
-    mut changes: MessageReader<TextFieldChangeEvent>,
-    fields: Query<&MaterialTextField>,
-    mut cache: ResMut<ShowcaseTextFieldCache>,
-) {
-    for ev in changes.read() {
-        let Ok(field) = fields.get(ev.entity) else {
-            continue;
-        };
-
-        let Some(label) = field.label.as_deref() else {
-            continue;
-        };
-
-        cache.by_label.insert(label.to_string(), ev.value.clone());
-    }
-}
-
-fn restore_showcase_text_field_values_system(
-    mut new_fields: Query<&mut MaterialTextField, Added<MaterialTextField>>,
-    cache: Res<ShowcaseTextFieldCache>,
-) {
-    if cache.by_label.is_empty() {
-        return;
-    }
-
-    for mut field in new_fields.iter_mut() {
-        let Some(label) = field.label.clone() else {
-            continue;
-        };
-
-        let Some(value) = cache.by_label.get(&label) else {
-            continue;
-        };
-
-        // Rehydrate the field’s value after an adaptive-layout rebuild.
-        field.value = value.clone();
-        field.has_content = !field.value.is_empty();
-
-        // Keep the demo’s email validation behavior consistent after restore.
-        if field.input_type == InputType::Email {
-            let valid = is_valid_email(&field.value);
-            if valid {
-                field.error = false;
-                field.error_text = None;
-            } else {
-                field.error = true;
-                field.error_text = Some("Invalid email address".to_string());
-            }
-        }
     }
 }
 
@@ -441,13 +339,7 @@ fn ensure_automation_test_ids_inputs_system(
     slider_thumbs: Query<(Entity, &UiGlobalTransform), (With<SliderHandle>, Without<TestId>)>,
     text_fields: Query<(Entity, &UiGlobalTransform), (With<MaterialTextField>, Without<TestId>)>,
     selects: Query<(Entity, &UiGlobalTransform), (With<MaterialSelect>, Without<TestId>)>,
-    select_options: Query<
-        (Entity, &UiGlobalTransform),
-        (
-            With<bevy_material_ui::select::SelectOptionItem>,
-            Without<TestId>,
-        ),
-    >,
+    select_options: Query<(Entity, &UiGlobalTransform), (With<bevy_material_ui::select::SelectOptionItem>, Without<TestId>)>,
 ) {
     if !telemetry.enabled {
         return;
@@ -468,8 +360,10 @@ fn ensure_automation_test_ids_inputs_system(
             }
         }
         ComponentSection::Switches => {
-            let mut items: Vec<(Entity, f32)> =
-                switches.iter().map(|(e, t)| (e, t.translation.y)).collect();
+            let mut items: Vec<(Entity, f32)> = switches
+                .iter()
+                .map(|(e, t)| (e, t.translation.y))
+                .collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
@@ -572,41 +466,19 @@ fn ensure_automation_test_ids_overlays_system(
     selected: Res<SelectedSection>,
     telemetry: Res<ComponentTelemetry>,
     mut commands: Commands,
-    show_dialog_buttons: Query<
-        (Entity, &UiGlobalTransform),
-        (With<ShowDialogButton>, Without<TestId>),
-    >,
-    dialog_containers: Query<
-        (Entity, &UiGlobalTransform),
-        (With<DialogContainer>, Without<TestId>),
-    >,
-    dialog_close_buttons: Query<
-        (Entity, &UiGlobalTransform),
-        (With<DialogCloseButton>, Without<TestId>),
-    >,
-    dialog_confirm_buttons: Query<
-        (Entity, &UiGlobalTransform),
-        (With<DialogConfirmButton>, Without<TestId>),
-    >,
-    datetime_open_buttons: Query<
-        (Entity, &UiGlobalTransform),
-        (With<DateTimePickerOpenButton>, Without<TestId>),
-    >,
-    datetime_pickers: Query<
-        (Entity, &UiGlobalTransform),
-        (With<MaterialDateTimePicker>, Without<TestId>),
-    >,
+    show_dialog_buttons: Query<(Entity, &UiGlobalTransform), (With<ShowDialogButton>, Without<TestId>)>,
+    dialog_containers: Query<(Entity, &UiGlobalTransform), (With<DialogContainer>, Without<TestId>)>,
+    dialog_close_buttons: Query<(Entity, &UiGlobalTransform), (With<DialogCloseButton>, Without<TestId>)>,
+    dialog_confirm_buttons: Query<(Entity, &UiGlobalTransform), (With<DialogConfirmButton>, Without<TestId>)>,
+    date_picker_open_buttons: Query<(Entity, &UiGlobalTransform), (With<DatePickerOpenButton>, Without<TestId>)>,
+    date_pickers: Query<(Entity, &UiGlobalTransform), (With<MaterialDatePicker>, Without<TestId>)>,
+    time_picker_open_buttons: Query<(Entity, &UiGlobalTransform), (With<TimePickerOpenButton>, Without<TestId>)>,
+    time_pickers: Query<(Entity, &UiGlobalTransform), (With<MaterialTimePicker>, Without<TestId>)>,
     menu_triggers: Query<(Entity, &UiGlobalTransform), (With<MenuTrigger>, Without<TestId>)>,
     menu_dropdowns: Query<(Entity, &UiGlobalTransform), (With<MenuDropdown>, Without<TestId>)>,
     menu_items: Query<(Entity, &UiGlobalTransform), (With<MenuItemMarker>, Without<TestId>)>,
-    snackbar_triggers: Query<
-        (Entity, &UiGlobalTransform),
-        (With<SnackbarTrigger>, Without<TestId>),
-    >,
-    tooltip_demo_buttons: Query<
-        (Entity, &UiGlobalTransform),
-        (With<TooltipDemoButton>, Without<TestId>),
-    >,
+    snackbar_triggers: Query<(Entity, &UiGlobalTransform), (With<SnackbarTrigger>, Without<TestId>)>,
+    tooltip_demo_buttons: Query<(Entity, &UiGlobalTransform), (With<TooltipDemoButton>, Without<TestId>)>,
 ) {
     if !telemetry.enabled {
         return;
@@ -662,8 +534,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
         }
-        ComponentSection::DateTimePicker => {
-            let mut opens: Vec<(Entity, f32)> = datetime_open_buttons
+        ComponentSection::DatePicker => {
+            let mut opens: Vec<(Entity, f32)> = date_picker_open_buttons
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -671,11 +543,11 @@ fn ensure_automation_test_ids_overlays_system(
             for (i, (entity, _)) in opens.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
                     entity,
-                    test_id: TestId::new(format!("datetime_open_{}", i)),
+                    test_id: TestId::new(format!("date_picker_open_{}", i)),
                 });
             }
 
-            let mut pickers: Vec<(Entity, f32)> = datetime_pickers
+            let mut pickers: Vec<(Entity, f32)> = date_pickers
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -683,7 +555,32 @@ fn ensure_automation_test_ids_overlays_system(
             for (i, (entity, _)) in pickers.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
                     entity,
-                    test_id: TestId::new(format!("datetime_picker_{}", i)),
+                    test_id: TestId::new(format!("date_picker_{}", i)),
+                });
+            }
+        }
+        ComponentSection::TimePicker => {
+            let mut opens: Vec<(Entity, f32)> = time_picker_open_buttons
+                .iter()
+                .map(|(e, t)| (e, t.translation.y))
+                .collect();
+            opens.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            for (i, (entity, _)) in opens.into_iter().enumerate() {
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    test_id: TestId::new(format!("time_picker_open_{}", i)),
+                });
+            }
+
+            let mut pickers: Vec<(Entity, f32)> = time_pickers
+                .iter()
+                .map(|(e, t)| (e, t.translation.y))
+                .collect();
+            pickers.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+            for (i, (entity, _)) in pickers.into_iter().enumerate() {
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    test_id: TestId::new(format!("time_picker_{}", i)),
                 });
             }
         }
@@ -712,10 +609,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
 
-            let mut items: Vec<(Entity, f32)> = menu_items
-                .iter()
-                .map(|(e, t)| (e, t.translation.y))
-                .collect();
+            let mut items: Vec<(Entity, f32)> =
+                menu_items.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
@@ -771,18 +666,13 @@ fn telemetry_from_component_events_system(
         telemetry.log_event(&format!("Checkbox changed: {:?}", ev.entity));
     }
     for ev in switch_events.read() {
-        telemetry.log_event(&format!(
-            "Switch changed: {:?} -> {}",
-            ev.entity, ev.selected
-        ));
+        telemetry.log_event(&format!("Switch changed: {:?} -> {}", ev.entity, ev.selected));
     }
     for ev in radio_events.read() {
         telemetry.log_event(&format!("Radio changed: {:?}", ev.entity));
     }
     for ev in tab_events.read() {
-        telemetry
-            .states
-            .insert("tab_selected".to_string(), ev.index.to_string());
+        telemetry.states.insert("tab_selected".to_string(), ev.index.to_string());
         telemetry.log_event(&format!("Tab changed: {}", ev.index));
     }
     for ev in slider_events.read() {
@@ -793,10 +683,7 @@ fn telemetry_from_component_events_system(
                     .insert(format!("slider_{}_value", idx), format!("{:.2}", ev.value));
             }
         }
-        telemetry.log_event(&format!(
-            "Slider changed: {:?} -> {:.2}",
-            ev.entity, ev.value
-        ));
+        telemetry.log_event(&format!("Slider changed: {:?} -> {:.2}", ev.entity, ev.value));
     }
 }
 
@@ -815,8 +702,7 @@ fn telemetry_list_selection_state_system(
     }
 
     // Only recompute when something changed OR if the key is missing (first entry).
-    let needs_update =
-        !items_changed.is_empty() || !telemetry.states.contains_key("list_selected_items");
+    let needs_update = !items_changed.is_empty() || !telemetry.states.contains_key("list_selected_items");
     if !needs_update {
         return;
     }
@@ -844,12 +730,7 @@ fn telemetry_snapshot_system(
     windows: Query<&Window, With<bevy::window::PrimaryWindow>>,
     selected: Res<SelectedSection>,
     tabs: Query<&MaterialTabs>,
-    nodes: Query<(
-        &TestId,
-        &ComputedNode,
-        Option<&UiGlobalTransform>,
-        &GlobalTransform,
-    )>,
+    nodes: Query<(&TestId, &ComputedNode, &UiGlobalTransform)>,
     mut telemetry: ResMut<ComponentTelemetry>,
     mut timer: Local<Timer>,
 ) {
@@ -879,22 +760,20 @@ fn telemetry_snapshot_system(
         }
     }
 
-    let mut window_dims: Option<(f32, f32)> = None;
     if let Some(window) = windows.iter().next() {
-        let w = window.resolution.physical_width() as f32;
-        let h = window.resolution.physical_height() as f32;
-        telemetry
-            .states
-            .insert("window_width".to_string(), w.to_string());
-        telemetry
-            .states
-            .insert("window_height".to_string(), h.to_string());
-        window_dims = Some((w, h));
+        telemetry.states.insert(
+            "window_width".to_string(),
+            window.resolution.physical_width().to_string(),
+        );
+        telemetry.states.insert(
+            "window_height".to_string(),
+            window.resolution.physical_height().to_string(),
+        );
     }
 
     telemetry.elements.clear();
 
-    for (test_id, computed_node, ui_transform, global_transform) in nodes.iter() {
+    for (test_id, computed_node, transform) in nodes.iter() {
         let size = computed_node.size();
         if size.x <= 0.0 || size.y <= 0.0 {
             continue;
@@ -902,12 +781,7 @@ fn telemetry_snapshot_system(
 
         // Bevy UI uses physical pixels for `UiGlobalTransform`/`ComputedNode`.
         // Coordinates are in the window's client area.
-        let center: Vec2 = if let Some(t) = ui_transform {
-            t.translation
-        } else {
-            let t = global_transform.translation();
-            Vec2::new(t.x, t.y)
-        };
+        let center = transform.translation;
         let x = center.x - size.x / 2.0;
         let y = center.y - size.y / 2.0;
 
@@ -922,40 +796,6 @@ fn telemetry_snapshot_system(
                 parent: None,
             },
         );
-    }
-
-    // Ensure scaffold_* IDs are present for automation by synthesizing from known bounds.
-    if let Some((w, h)) = window_dims {
-        telemetry
-            .elements
-            .entry("scaffold_root".to_string())
-            .or_insert(ElementBounds::new("scaffold_root", 0.0, 0.0, w, h));
-    }
-
-    if let Some(nav) = telemetry.elements.get("sidebar_scroll_container").cloned() {
-        telemetry
-            .elements
-            .entry("scaffold_navigation".to_string())
-            .or_insert(ElementBounds::new(
-                "scaffold_navigation",
-                nav.x,
-                nav.y,
-                nav.width,
-                nav.height,
-            ));
-    }
-
-    if let Some(content) = telemetry.elements.get("main_scroll_container").cloned() {
-        telemetry
-            .elements
-            .entry("scaffold_content".to_string())
-            .or_insert(ElementBounds::new(
-                "scaffold_content",
-                content.x,
-                content.y,
-                content.width,
-                content.height,
-            ));
     }
 
     let elements_with_bounds = telemetry.elements.len();
@@ -1137,13 +977,12 @@ fn write_telemetry(telemetry: Res<ComponentTelemetry>) {
 
 fn setup_ui(
     mut commands: Commands,
+    asset_server: Res<AssetServer>,
     theme: Res<MaterialTheme>,
-    selection: Res<ShowcaseThemeSelection>,
-    icon_font: Res<MaterialIconFont>,
     selected: Res<SelectedSection>,
-    size_class: Res<WindowSizeClass>,
-    mut materials: ResMut<Assets<ShapeMorphMaterial>>,
     tab_cache: Res<TabStateCache>,
+    theme_selection: Res<ShowcaseThemeSelection>,
+    mut materials: ResMut<Assets<ShapeMorphMaterial>>,
 ) {
     // UI camera (renders over the 3d scene)
     commands.spawn((
@@ -1154,7 +993,8 @@ fn setup_ui(
         },
     ));
 
-    let icon_font = icon_font.0.clone();
+    let icon_font = asset_server.load::<Font>("fonts/MaterialSymbolsOutlined.ttf");
+    commands.insert_resource(IconFont(icon_font.clone()));
 
     // Global snackbar host overlay (required for ShowSnackbar events to display).
     commands.spawn(SnackbarHostBuilder::build());
@@ -1163,11 +1003,10 @@ fn setup_ui(
         &mut commands,
         &theme,
         selected.current,
-        selection.seed_argb,
         icon_font,
-        size_class.clone(),
-        &mut materials,
         &tab_cache,
+        theme_selection.seed_argb,
+        &mut materials,
     );
 }
 
@@ -1175,16 +1014,14 @@ fn spawn_ui_root(
     commands: &mut Commands,
     theme: &MaterialTheme,
     selected: ComponentSection,
-    seed_argb: u32,
     icon_font: Handle<Font>,
-    size_class: WindowSizeClass,
-    materials: &mut Assets<ShapeMorphMaterial>,
     tab_cache: &TabStateCache,
+    seed_argb: u32,
+    materials: &mut Assets<ShapeMorphMaterial>,
 ) {
     commands
         .spawn((
             UiRoot,
-            TestId::new("scaffold_root"),
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
@@ -1193,224 +1030,90 @@ fn spawn_ui_root(
             BackgroundColor(theme.surface.with_alpha(0.0)),
         ))
         .with_children(|root| {
-            let use_bottom_nav = !size_class.use_nav_rail();
-            let nav_slot = move |sidebar: &mut ChildSpawnerCommands| {
-                sidebar
-                    .spawn((
-                        TestId::new("scaffold_navigation"),
-                        Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(100.0),
-                            flex_direction: FlexDirection::Column,
-                            // Important for scroll containers inside flex parents
-                            min_height: Val::Px(0.0),
-                            flex_grow: 1.0,
-                            ..default()
-                        },
-                    ))
-                    .with_children(|sidebar| {
-                        if use_bottom_nav {
-                            // Compact: bottom navigation surface. Use horizontal scrolling so all sections
-                            // remain reachable and the automation can drag the horizontal thumb.
-                            sidebar
-                                .spawn((
-                                    SidebarNavScroll,
-                                    TestId::new("sidebar_scroll_container"),
-                                    ScrollContainerBuilder::new().horizontal().build(),
-                                    ScrollPosition::default(),
-                                    Node {
-                                        width: Val::Percent(100.0),
-                                        height: Val::Percent(100.0),
-                                        // Important for scroll containers inside flex parents
-                                        min_width: Val::Px(0.0),
-                                        flex_direction: FlexDirection::Row,
-                                        column_gap: Val::Px(4.0),
-                                        align_items: AlignItems::Center,
-                                        overflow: Overflow::scroll_x(),
-                                        ..default()
-                                    },
-                                ))
-                                .with_children(|nav| {
-                                    for section in ComponentSection::all() {
-                                        spawn_nav_item_horizontal(
-                                            nav,
-                                            theme,
-                                            *section,
-                                            *section == selected,
-                                        );
-                                    }
-                                    spawn_scrollbars(nav, theme, ScrollDirection::Horizontal);
-                                });
-                        } else {
-                            sidebar.spawn((
-                                Text::new("Material UI Showcase"),
-                                TextFont {
-                                    font_size: 18.0,
-                                    ..default()
-                                },
-                                TextColor(theme.on_surface),
-                                Node {
-                                    margin: UiRect::bottom(Val::Px(8.0)),
-                                    ..default()
-                                },
-                            ));
-
-                            // Scrollable navigation list (real MaterialList + ScrollContainer)
-                            sidebar
-                                .spawn(ListBuilder::new().build_scrollable())
-                                .insert(SidebarNavScroll)
-                                .insert(TestId::new("sidebar_scroll_container"))
-                                .insert(Node {
-                                    flex_grow: 1.0,
-                                    width: Val::Percent(100.0),
-                                    // Important for scroll containers inside flex columns
-                                    min_height: Val::Px(0.0),
-                                    flex_direction: FlexDirection::Column,
-                                    row_gap: Val::Px(4.0),
-                                    overflow: Overflow::scroll_y(),
-                                    ..default()
-                                })
-                                .with_children(|nav| {
-                                    for section in ComponentSection::all() {
-                                        spawn_nav_item(nav, theme, *section, *section == selected);
-                                    }
-                                    spawn_scrollbars(nav, theme, ScrollDirection::Vertical);
-                                });
-                        }
-                    });
+            let scaffold = PermanentDrawerScaffold {
+                navigation_width_px: 240.0,
+                navigation_padding_px: 12.0,
+                content_padding_px: 0.0,
+                ..default()
             };
 
-            let content_slot = |content: &mut ChildSpawnerCommands| {
-                content
-                    .spawn((
-                        TestId::new("scaffold_content"),
-                        Node {
-                            width: Val::Percent(100.0),
-                            // Important for scroll containers inside flex parents
-                            min_height: Val::Px(0.0),
-                            flex_direction: FlexDirection::Column,
-                            flex_grow: 1.0,
-                            ..default()
-                        },
-                    ))
-                    .with_children(|content| {
-                        content
-                            .spawn((
-                                DetailContent,
-                                Node {
-                                    width: Val::Percent(100.0),
-                                    // Using `flex_grow` avoids percent-height inside an auto-sized
-                                    // flex container (notably the bottom-nav scaffold), which can
-                                    // otherwise resolve to 0 until a resize/layout rebuild.
-                                    flex_grow: 1.0,
-                                    // Important for scroll containers inside flex columns
-                                    min_height: Val::Px(0.0),
-                                    padding: UiRect::all(Val::Px(16.0)),
-                                    overflow: Overflow::clip_y(),
-                                    ..default()
-                                },
-                                BackgroundColor(theme.surface),
-                            ))
-                            .with_children(|detail| {
-                                spawn_detail_scroller(
-                                    detail, theme, selected, seed_argb, icon_font, materials,
-                                    tab_cache,
-                                );
-                            });
-                    });
-            };
-
-            // Keep the same nav/content TestIds so automation stays stable.
-            let scaffold = AdaptiveNavigationScaffold {
-                drawer: PermanentDrawerScaffold {
-                    navigation_width_px: 240.0,
-                    navigation_padding_px: 12.0,
-                    content_padding_px: 0.0,
-                    ..default()
-                },
-                rail: NavigationRailScaffold {
-                    // Wider than a typical rail so our existing list-based navigation fits.
-                    rail_width_px: 240.0,
-                    rail_padding_px: 12.0,
-                    content_padding_px: 0.0,
-                    ..default()
-                },
-                bottom: BottomNavigationScaffold {
-                    bottom_bar_height_px: 96.0,
-                    bottom_bar_padding_px: 12.0,
-                    content_padding_px: 0.0,
-                    ..default()
-                },
-            };
-
-            spawn_adaptive_navigation_scaffold(
+            spawn_permanent_drawer_scaffold(
                 root,
                 theme,
-                &size_class,
                 &scaffold,
-                nav_slot,
-                content_slot,
+                |sidebar| {
+                    sidebar.spawn((
+                        Text::new("Material UI Showcase"),
+                        TextFont {
+                            font_size: 18.0,
+                            ..default()
+                        },
+                        TextColor(theme.on_surface),
+                        Node {
+                            margin: UiRect::bottom(Val::Px(8.0)),
+                            ..default()
+                        },
+                    ));
+
+                    // Scrollable navigation list (real MaterialList + ScrollContainer)
+                    sidebar
+                        .spawn(ListBuilder::new().build_scrollable())
+                        .insert(SidebarNavScroll)
+                        .insert(TestId::new("sidebar_scroll_container"))
+                        .insert(Node {
+                            flex_grow: 1.0,
+                            width: Val::Percent(100.0),
+                            // Important for scroll containers inside flex columns
+                            min_height: Val::Px(0.0),
+                            flex_direction: FlexDirection::Column,
+                            row_gap: Val::Px(4.0),
+                            overflow: Overflow::scroll(),
+                            ..default()
+                        })
+                        .with_children(|nav| {
+                            for section in ComponentSection::all() {
+                                spawn_nav_item(nav, theme, *section, *section == selected);
+                            }
+                            // Scrollbars spawn automatically
+                        });
+                },
+                |content| {
+                    content
+                        .spawn((
+                            DetailContent,
+                            Node {
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(100.0),
+                                padding: UiRect::all(Val::Px(16.0)),
+                                overflow: Overflow::clip_y(),
+                                ..default()
+                            },
+                            BackgroundColor(theme.surface),
+                        ))
+                        .with_children(|detail| {
+                            spawn_detail_scroller(
+                                detail,
+                                theme,
+                                selected,
+                                icon_font,
+                                tab_cache,
+                                seed_argb,
+                                materials,
+                            );
+                        });
+                },
             );
         });
-}
-
-fn rebuild_ui_on_size_class_change_system(
-    mut commands: Commands,
-    theme: Res<MaterialTheme>,
-    selected: Res<SelectedSection>,
-    selection: Res<ShowcaseThemeSelection>,
-    icon_font: Res<MaterialIconFont>,
-    size_class: Res<WindowSizeClass>,
-    mut gate: ResMut<LayoutRebuildGate>,
-    mut materials: ResMut<Assets<ShapeMorphMaterial>>,
-    tab_cache: Res<TabStateCache>,
-    roots: Query<Entity, With<UiRoot>>,
-    children_q: Query<&Children>,
-) {
-    if !gate.initialized {
-        gate.initialized = true;
-        gate.last_width = Some(size_class.width);
-        gate.last_height = Some(size_class.height);
-        return;
-    }
-
-    // `WindowSizeClass` also tracks raw pixel dimensions. During a window drag-resize,
-    // those change continuously; rebuilding the entire UI tree on every update causes
-    // visible flicker (content appears/disappears).
-    let width_changed = gate.last_width != Some(size_class.width);
-    let height_changed = gate.last_height != Some(size_class.height);
-    if !width_changed && !height_changed {
-        return;
-    }
-
-    gate.last_width = Some(size_class.width);
-    gate.last_height = Some(size_class.height);
-
-    for root in roots.iter() {
-        clear_children_recursive(&mut commands, &children_q, root);
-        commands.entity(root).despawn();
-    }
-
-    spawn_ui_root(
-        &mut commands,
-        &theme,
-        selected.current,
-        selection.seed_argb,
-        icon_font.0.clone(),
-        size_class.clone(),
-        &mut materials,
-        &tab_cache,
-    );
 }
 
 fn spawn_detail_scroller(
     parent: &mut ChildSpawnerCommands,
     theme: &MaterialTheme,
     selected: ComponentSection,
-    seed_argb: u32,
     icon_font: Handle<Font>,
-    mut materials: &mut Assets<ShapeMorphMaterial>,
     tab_cache: &TabStateCache,
+    seed_argb: u32,
+    materials: &mut Assets<ShapeMorphMaterial>,
 ) {
     parent
         .spawn((
@@ -1421,6 +1124,7 @@ fn spawn_detail_scroller(
             Node {
                 flex_grow: 1.0,
                 width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 // Important for scroll containers inside flex parents
                 min_height: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
@@ -1450,15 +1154,14 @@ fn spawn_detail_scroller(
                         surface,
                         theme,
                         selected,
-                        seed_argb,
                         icon_font,
-                        &mut materials,
                         tab_cache,
+                        seed_argb,
+                        materials,
                     );
                 });
 
-            // Optional: explicit call still ok; scroll plugin also ensures scrollbars.
-            spawn_scrollbars(scroller, theme, ScrollDirection::Both);
+            // Scrollbars spawn automatically via ScrollPlugin's ensure_scrollbars_system
         });
 }
 
@@ -1496,144 +1199,6 @@ fn theme_seed_option_system(
             *theme = MaterialTheme::from_seed(argb_to_seed_color(selection.seed_argb), theme.mode);
             telemetry.log_event("Theme: seed changed");
         }
-    }
-}
-
-fn attach_theme_seed_text_field_system(
-    mut commands: Commands,
-    slots: Query<(Entity, &Children), With<ThemeSeedTextFieldSlot>>,
-    children: Query<&Children>,
-    fields: Query<(), With<MaterialTextField>>,
-) {
-    fn find_field_entity(
-        root: Entity,
-        children_q: &Query<&Children>,
-        is_field: &Query<(), With<MaterialTextField>>,
-    ) -> Option<Entity> {
-        if is_field.get(root).is_ok() {
-            return Some(root);
-        }
-        let Ok(kids) = children_q.get(root) else {
-            return None;
-        };
-        for child in kids.iter() {
-            if let Some(found) = find_field_entity(child, children_q, is_field) {
-                return Some(found);
-            }
-        }
-        None
-    }
-
-    for (slot_entity, slot_children) in slots.iter() {
-        let mut field_entity: Option<Entity> = None;
-        for child in slot_children.iter() {
-            field_entity = find_field_entity(child, &children, &fields);
-            if field_entity.is_some() {
-                break;
-            }
-        }
-
-        let Some(field_entity) = field_entity else {
-            continue;
-        };
-
-        commands.entity(field_entity).insert(ThemeSeedTextField);
-        commands
-            .entity(slot_entity)
-            .remove::<ThemeSeedTextFieldSlot>();
-    }
-}
-
-fn theme_seed_text_field_system(
-    mut theme: ResMut<MaterialTheme>,
-    mut selection: ResMut<ShowcaseThemeSelection>,
-    mut telemetry: ResMut<ComponentTelemetry>,
-    mut change_events: MessageReader<TextFieldChangeEvent>,
-    mut submit_events: MessageReader<TextFieldSubmitEvent>,
-    tagged: Query<(), With<ThemeSeedTextField>>,
-    mut fields: Query<&mut MaterialTextField>,
-) {
-    // Apply as soon as the input parses (ideal for paste).
-    for ev in change_events.read() {
-        if tagged.get(ev.entity).is_err() {
-            continue;
-        }
-
-        let Some(argb) = parse_seed_hex_to_argb(&ev.value) else {
-            continue;
-        };
-
-        if selection.seed_argb != argb {
-            selection.seed_argb = argb;
-            *theme = MaterialTheme::from_seed(argb_to_seed_color(selection.seed_argb), theme.mode);
-            telemetry.log_event("Theme: seed changed (text)");
-        }
-
-        if let Ok(mut field) = fields.get_mut(ev.entity) {
-            field.error = false;
-            field.error_text = None;
-        }
-    }
-
-    // On submit, show an error if it's still not parseable.
-    for ev in submit_events.read() {
-        if tagged.get(ev.entity).is_err() {
-            continue;
-        }
-
-        let Ok(mut field) = fields.get_mut(ev.entity) else {
-            continue;
-        };
-
-        match parse_seed_hex_to_argb(&ev.value) {
-            Some(argb) => {
-                if selection.seed_argb != argb {
-                    selection.seed_argb = argb;
-                    *theme = MaterialTheme::from_seed(
-                        argb_to_seed_color(selection.seed_argb),
-                        theme.mode,
-                    );
-                    telemetry.log_event("Theme: seed changed (text submit)");
-                }
-                field.error = false;
-                field.error_text = None;
-            }
-            None => {
-                field.error = true;
-                field.error_text =
-                    Some("Expected #RRGGBB, RRGGBB, 0xRRGGBB, or 0xFFRRGGBB".to_string());
-            }
-        }
-    }
-}
-
-fn parse_seed_hex_to_argb(input: &str) -> Option<u32> {
-    let mut s = input.trim();
-    s = s.strip_prefix("Seed:").unwrap_or(s).trim();
-    s = s.strip_prefix('#').unwrap_or(s);
-
-    if let Some(rest) = s.strip_prefix("0x") {
-        s = rest;
-    } else if let Some(rest) = s.strip_prefix("0X") {
-        s = rest;
-    }
-
-    let hex = s.trim();
-    match hex.len() {
-        6 => {
-            let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            Some(0xFF00_0000 | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
-        }
-        8 => {
-            let a = u8::from_str_radix(&hex[0..2], 16).ok()?;
-            let r = u8::from_str_radix(&hex[2..4], 16).ok()?;
-            let g = u8::from_str_radix(&hex[4..6], 16).ok()?;
-            let b = u8::from_str_radix(&hex[6..8], 16).ok()?;
-            Some(((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32))
-        }
-        _ => None,
     }
 }
 
@@ -1747,12 +1312,12 @@ fn menu_demo_system(
 }
 
 #[allow(clippy::type_complexity)]
-fn datetime_picker_demo_system(
-    mut open_buttons: Query<(&Interaction, &DateTimePickerOpenButton), Changed<Interaction>>,
-    mut pickers: Query<&mut MaterialDateTimePicker>,
-    mut submit: MessageReader<DateTimePickerSubmitEvent>,
-    mut cancel: MessageReader<DateTimePickerCancelEvent>,
-    mut result_texts: Query<(&DateTimePickerResultDisplay, &mut Text)>,
+fn date_picker_demo_system(
+    mut open_buttons: Query<(&Interaction, &DatePickerOpenButton), Changed<Interaction>>,
+    mut pickers: Query<&mut MaterialDatePicker>,
+    mut submit: MessageReader<DatePickerSubmitEvent>,
+    mut cancel: MessageReader<DatePickerCancelEvent>,
+    mut result_texts: Query<(&DatePickerResultDisplay, &mut Text)>,
 ) {
     // Open picker when the demo button is pressed.
     for (interaction, open_button) in open_buttons.iter_mut() {
@@ -1767,10 +1332,22 @@ fn datetime_picker_demo_system(
 
     // Update result text on submit.
     for ev in submit.read() {
-        let label = format!(
-            "Result: {:04}-{:02}-{:02} {:02}:{:02}",
-            ev.date.year, ev.date.month, ev.date.day, ev.hour, ev.minute
-        );
+        let label = match &ev.selection {
+            DateSelection::Single(date) => {
+                format!("Result: {}-{:02}-{:02}", date.year, date.month as u8, date.day)
+            }
+            DateSelection::Range { start, end } => {
+                if let Some(end) = end {
+                    format!(
+                        "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
+                        start.year, start.month as u8, start.day,
+                        end.year, end.month as u8, end.day
+                    )
+                } else {
+                    format!("Result: {}-{:02}-{:02} (selecting...)", start.year, start.month as u8, start.day)
+                }
+            }
+        };
 
         for (display, mut text) in result_texts.iter_mut() {
             if display.0 == ev.entity {
@@ -1781,9 +1358,85 @@ fn datetime_picker_demo_system(
 
     // Update result text on cancel.
     for ev in cancel.read() {
+        let label = if let Ok(picker) = pickers.get(ev.entity) {
+            match picker.selection() {
+                Some(DateSelection::Single(date)) => {
+                    format!("Result: {}-{:02}-{:02}", date.year, date.month as u8, date.day)
+                }
+                Some(DateSelection::Range { start, end }) => {
+                    if let Some(end) = end {
+                        format!(
+                            "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
+                            start.year,
+                            start.month as u8,
+                            start.day,
+                            end.year,
+                            end.month as u8,
+                            end.day
+                        )
+                    } else {
+                        format!(
+                            "Result: {}-{:02}-{:02} (selecting...)",
+                            start.year,
+                            start.month as u8,
+                            start.day
+                        )
+                    }
+                }
+                None => "Result: None".to_string(),
+            }
+        } else {
+            "Result: Canceled".to_string()
+        };
+
         for (display, mut text) in result_texts.iter_mut() {
             if display.0 == ev.entity {
-                *text = Text::new("Result: Canceled");
+                *text = Text::new(label.as_str());
+            }
+        }
+    }
+}
+
+fn time_picker_demo_system(
+    mut open_buttons: Query<(&Interaction, &TimePickerOpenButton), Changed<Interaction>>,
+    mut pickers: Query<&mut MaterialTimePicker>,
+    mut submit: MessageReader<TimePickerSubmitEvent>,
+    mut cancel: MessageReader<TimePickerCancelEvent>,
+    mut result_texts: Query<(&TimePickerResultDisplay, &mut Text)>,
+) {
+    // Open picker when the demo button is pressed.
+    for (interaction, open_button) in open_buttons.iter_mut() {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+
+        if let Ok(mut picker) = pickers.get_mut(open_button.0) {
+            picker.open = true;
+        }
+    }
+
+    // Update result text on submit.
+    for ev in submit.read() {
+        let label = format!("Result: {:02}:{:02}", ev.hour, ev.minute);
+
+        for (display, mut text) in result_texts.iter_mut() {
+            if display.0 == ev.entity {
+                *text = Text::new(label.as_str());
+            }
+        }
+    }
+
+    // Update result text on cancel.
+    for ev in cancel.read() {
+        let label = if let Ok(picker) = pickers.get(ev.entity) {
+            format!("Result: {:02}:{:02}", picker.hour, picker.minute)
+        } else {
+            "Result: Canceled".to_string()
+        };
+
+        for (display, mut text) in result_texts.iter_mut() {
+            if display.0 == ev.entity {
+                *text = Text::new(label.as_str());
             }
         }
     }
@@ -1793,14 +1446,13 @@ fn rebuild_ui_on_theme_change_system(
     mut commands: Commands,
     theme: Res<MaterialTheme>,
     selected: Res<SelectedSection>,
-    selection: Res<ShowcaseThemeSelection>,
-    icon_font: Res<MaterialIconFont>,
-    mut gate: ResMut<ThemeRebuildGate>,
-    mut materials: ResMut<Assets<ShapeMorphMaterial>>,
+    icon_font: Res<IconFont>,
     tab_cache: Res<TabStateCache>,
+    theme_selection: Res<ShowcaseThemeSelection>,
+    mut materials: ResMut<Assets<ShapeMorphMaterial>>,
+    mut gate: ResMut<ThemeRebuildGate>,
     roots: Query<Entity, With<UiRoot>>,
     children_q: Query<&Children>,
-    windows: Query<&Window>,
 ) {
     // `MaterialTheme` is inserted during app startup, which marks it as changed.
     // Skip the first tick to avoid rebuilding UI immediately (and causing double-despawn warnings).
@@ -1818,38 +1470,15 @@ fn rebuild_ui_on_theme_change_system(
         commands.entity(root).despawn();
     }
 
-    let window_size = windows
-        .iter()
-        .next()
-        .map(|w| (w.width(), w.height()))
-        .unwrap_or((1280.0, 720.0));
-
     spawn_ui_root(
         &mut commands,
         &theme,
         selected.current,
-        selection.seed_argb,
         icon_font.0.clone(),
-        WindowSizeClass::new(window_size.0, window_size.1),
-        &mut materials,
         &tab_cache,
+        theme_selection.seed_argb,
+        &mut materials,
     );
-}
-
-/// System to cache tab states before UI rebuild
-fn cache_tab_state_system(
-    mut tab_cache: ResMut<TabStateCache>,
-    selected: Res<SelectedSection>,
-    tabs: Query<&MaterialTabs>,
-) {
-    // Only cache if we're on the Tabs section
-    if selected.current == ComponentSection::Tabs {
-        if let Some(tabs_component) = tabs.iter().next() {
-            tab_cache
-                .selections
-                .insert(ComponentSection::Tabs, tabs_component.selected);
-        }
-    }
 }
 
 fn snackbar_demo_options_system(
@@ -1896,14 +1525,8 @@ fn snackbar_demo_trigger_system(
 fn snackbar_demo_style_system(
     theme: Res<MaterialTheme>,
     options: Res<SnackbarDemoOptions>,
-    mut duration_chips: Query<
-        (&SnackbarDurationOption, &mut MaterialChip),
-        Without<SnackbarActionToggle>,
-    >,
-    mut action_toggle_chip: Query<
-        &mut MaterialChip,
-        (With<SnackbarActionToggle>, Without<SnackbarDurationOption>),
-    >,
+    mut duration_chips: Query<(&SnackbarDurationOption, &mut MaterialChip), Without<SnackbarActionToggle>>,
+    mut action_toggle_chip: Query<&mut MaterialChip, (With<SnackbarActionToggle>, Without<SnackbarDurationOption>)>,
 ) {
     if !theme.is_changed() && !options.is_changed() {
         return;
@@ -1973,19 +1596,8 @@ fn tooltip_demo_apply_system(
 fn tooltip_demo_style_system(
     theme: Res<MaterialTheme>,
     options: Res<TooltipDemoOptions>,
-    mut position_buttons: Query<
-        (
-            Entity,
-            &TooltipPositionOption,
-            &mut MaterialButton,
-            &Children,
-        ),
-        Without<TooltipDelayOption>,
-    >,
-    mut delay_buttons: Query<
-        (Entity, &TooltipDelayOption, &mut MaterialButton, &Children),
-        Without<TooltipPositionOption>,
-    >,
+    mut position_buttons: Query<(Entity, &TooltipPositionOption, &mut MaterialButton, &Children), Without<TooltipDelayOption>>,
+    mut delay_buttons: Query<(Entity, &TooltipDelayOption, &mut MaterialButton, &Children), Without<TooltipPositionOption>>,
     mut label_colors: Query<&mut TextColor, With<ButtonLabel>>,
 ) {
     if !theme.is_changed() && !options.is_changed() {
@@ -2036,17 +1648,6 @@ fn dialog_demo_position_options_system(
     }
 }
 
-fn dialog_demo_modal_options_system(
-    mut options: ResMut<DialogDemoOptions>,
-    mut modal_buttons: Query<(&DialogModalOption, &Interaction), Changed<Interaction>>,
-) {
-    for (opt, interaction) in modal_buttons.iter_mut() {
-        if *interaction == Interaction::Pressed {
-            options.modal = opt.0;
-        }
-    }
-}
-
 fn dialog_demo_position_style_system(
     theme: Res<MaterialTheme>,
     options: Res<DialogDemoOptions>,
@@ -2058,20 +1659,6 @@ fn dialog_demo_position_style_system(
 
     for (opt, mut chip) in position_chips.iter_mut() {
         chip.selected = opt.0 == options.position;
-    }
-}
-
-fn dialog_demo_modal_style_system(
-    theme: Res<MaterialTheme>,
-    options: Res<DialogDemoOptions>,
-    mut modal_chips: Query<(&DialogModalOption, &mut MaterialChip)>,
-) {
-    if !theme.is_changed() && !options.is_changed() {
-        return;
-    }
-
-    for (opt, mut chip) in modal_chips.iter_mut() {
-        chip.selected = opt.0 == options.modal;
     }
 }
 
@@ -2124,25 +1711,11 @@ fn dialog_demo_apply_position_system(
     }
 }
 
-fn dialog_demo_apply_modal_system(
-    options: Res<DialogDemoOptions>,
-    dialogs_added: Query<(), Added<DialogContainer>>,
-    mut dialogs: Query<&mut MaterialDialog, With<DialogContainer>>,
-) {
-    if !options.is_changed() && dialogs_added.is_empty() {
-        return;
-    }
-
-    for mut dialog in dialogs.iter_mut() {
-        dialog.modal = options.modal;
-    }
-}
-
 fn dialog_demo_open_close_system(
     mut show_buttons: Query<&Interaction, (Changed<Interaction>, With<ShowDialogButton>)>,
     mut close_buttons: Query<&Interaction, (Changed<Interaction>, With<DialogCloseButton>)>,
     mut confirm_buttons: Query<&Interaction, (Changed<Interaction>, With<DialogConfirmButton>)>,
-    mut dialog: Query<&mut MaterialDialog, With<DialogContainer>>,
+    mut dialogs: Query<(&mut MaterialDialog, Option<&mut Visibility>), With<DialogContainer>>,
     mut result_text: Query<&mut Text, With<DialogResultDisplay>>,
 ) {
     let mut open = false;
@@ -2167,14 +1740,20 @@ fn dialog_demo_open_close_system(
     }
 
     if open {
-        for mut d in dialog.iter_mut() {
-            d.open = true;
+        for (mut dialog, maybe_vis) in dialogs.iter_mut() {
+            dialog.open = true;
+            if let Some(mut vis) = maybe_vis {
+                *vis = Visibility::Visible;
+            }
         }
     }
 
     if let Some(reason) = close_reason {
-        for mut d in dialog.iter_mut() {
-            d.open = false;
+        for (mut dialog, maybe_vis) in dialogs.iter_mut() {
+            dialog.open = false;
+            if let Some(mut vis) = maybe_vis {
+                *vis = Visibility::Visible;
+            }
         }
         for mut text in result_text.iter_mut() {
             text.0 = format!("Result: {}", reason);
@@ -2186,10 +1765,10 @@ fn update_detail_content(
     mut commands: Commands,
     theme: Res<MaterialTheme>,
     selected: Res<SelectedSection>,
-    selection: Res<ShowcaseThemeSelection>,
-    icon_font: Res<MaterialIconFont>,
-    mut materials: ResMut<Assets<ShapeMorphMaterial>>,
+    icon_font: Res<IconFont>,
     tab_cache: Res<TabStateCache>,
+    theme_selection: Res<ShowcaseThemeSelection>,
+    mut materials: ResMut<Assets<ShapeMorphMaterial>>,
     detail: Query<Entity, With<DetailContent>>,
     children_q: Query<&Children>,
 ) {
@@ -2210,10 +1789,10 @@ fn update_detail_content(
             detail,
             &theme,
             section,
-            selection.seed_argb,
             icon_font,
-            &mut materials,
             &tab_cache,
+            theme_selection.seed_argb,
+            &mut materials,
         );
     });
 }
@@ -2222,10 +1801,10 @@ fn spawn_selected_section(
     parent: &mut ChildSpawnerCommands,
     theme: &MaterialTheme,
     section: ComponentSection,
-    seed_argb: u32,
     icon_font: Handle<Font>,
-    materials: &mut Assets<ShapeMorphMaterial>,
     tab_cache: &TabStateCache,
+    seed_argb: u32,
+    materials: &mut Assets<ShapeMorphMaterial>,
 ) {
     match section {
         ComponentSection::Buttons => spawn_buttons_section(parent, theme),
@@ -2244,7 +1823,8 @@ fn spawn_selected_section(
         ComponentSection::Sliders => spawn_sliders_section(parent, theme),
         ComponentSection::TextFields => spawn_text_fields_section(parent, theme),
         ComponentSection::Dialogs => spawn_dialogs_section(parent, theme),
-        ComponentSection::DateTimePicker => spawn_datetime_picker_section(parent, theme),
+        ComponentSection::DatePicker => spawn_date_picker_section(parent, theme),
+        ComponentSection::TimePicker => spawn_time_picker_section(parent, theme),
         ComponentSection::Menus => spawn_menus_section(parent, theme, icon_font),
         ComponentSection::Tabs => spawn_tabs_section(parent, theme, tab_cache),
         ComponentSection::Select => spawn_select_section(parent, theme, icon_font),
@@ -2253,19 +1833,13 @@ fn spawn_selected_section(
         ComponentSection::AppBar => spawn_app_bar_section(parent, theme, icon_font),
         ComponentSection::Toolbar => spawn_toolbar_section(parent, theme, icon_font),
         ComponentSection::Layouts => spawn_layouts_section(parent, theme, icon_font),
-        ComponentSection::LoadingIndicator => {
-            spawn_loading_indicator_section(parent, theme, materials)
-        }
+        ComponentSection::LoadingIndicator => spawn_loading_indicator_section(parent, theme, materials),
         ComponentSection::Search => spawn_search_section(parent, theme),
         ComponentSection::ThemeColors => spawn_theme_section(parent, theme, seed_argb),
     }
 }
 
-fn clear_children_recursive(
-    commands: &mut Commands,
-    children_q: &Query<&Children>,
-    entity: Entity,
-) {
+fn clear_children_recursive(commands: &mut Commands, children_q: &Query<&Children>, entity: Entity) {
     let Ok(children) = children_q.get(entity) else {
         return;
     };
@@ -2396,13 +1970,10 @@ fn create_d10_mesh() -> Mesh {
         );
     }
 
-    Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD,
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_indices(Indices::U32(indices))
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_indices(Indices::U32(indices))
 }
 
 fn add_triangle(
@@ -2430,3 +2001,4 @@ fn add_triangle(
     indices.push(start + 1);
     indices.push(start + 2);
 }
+

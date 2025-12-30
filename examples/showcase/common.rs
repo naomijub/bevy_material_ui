@@ -96,7 +96,8 @@ pub enum ComponentSection {
     Sliders,
     TextFields,
     Dialogs,
-    DateTimePicker,
+    DatePicker,
+    TimePicker,
     Menus,
     Tabs,
     Select,
@@ -130,7 +131,8 @@ impl ComponentSection {
             Self::Sliders => "Sliders",
             Self::TextFields => "Text Fields",
             Self::Dialogs => "Dialogs",
-            Self::DateTimePicker => "DateTime Picker",
+            Self::DatePicker => "Date Picker",
+            Self::TimePicker => "Time Picker",
             Self::Menus => "Menus",
             Self::Tabs => "Tabs",
             Self::Select => "Select",
@@ -166,7 +168,8 @@ impl ComponentSection {
             Self::Sliders => "Sliders",
             Self::TextFields => "TextFields",
             Self::Dialogs => "Dialogs",
-            Self::DateTimePicker => "DateTimePicker",
+            Self::DatePicker => "DatePicker",
+            Self::TimePicker => "TimePicker",
             Self::Menus => "Menus",
             Self::Tabs => "Tabs",
             Self::Select => "Select",
@@ -200,7 +203,8 @@ impl ComponentSection {
             Self::Sliders,
             Self::TextFields,
             Self::Dialogs,
-            Self::DateTimePicker,
+            Self::DatePicker,
+            Self::TimePicker,
             Self::Menus,
             Self::Tabs,
             Self::Select,
@@ -319,13 +323,21 @@ pub struct DialogResultDisplay;
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DialogModalOption(pub bool);
 
-/// Marker for date-time picker demo open button
+/// Marker for date picker demo open button
 #[derive(Component)]
-pub struct DateTimePickerOpenButton(pub Entity);
+pub struct DatePickerOpenButton(pub Entity);
 
-/// Marker for date-time picker demo result display
+/// Marker for date picker demo result display
 #[derive(Component)]
-pub struct DateTimePickerResultDisplay(pub Entity);
+pub struct DatePickerResultDisplay(pub Entity);
+
+/// Marker for time picker demo open button
+#[derive(Component)]
+pub struct TimePickerOpenButton(pub Entity);
+
+/// Marker for time picker demo result display
+#[derive(Component)]
+pub struct TimePickerResultDisplay(pub Entity);
 
 /// Marker for menu trigger button
 #[derive(Component)]

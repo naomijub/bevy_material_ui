@@ -19,6 +19,9 @@ pub struct ToolbarPlugin;
 
 impl Plugin for ToolbarPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+            app.add_plugins(crate::MaterialUiCorePlugin);
+        }
         app.add_message::<ToolbarNavigationEvent>()
             .add_message::<ToolbarActionEvent>()
             .add_systems(

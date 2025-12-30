@@ -113,28 +113,40 @@ pub(crate) const WHITE_POINT_D65_Y: f64 = 100.0;
 /// D65 white point Z
 pub(crate) const WHITE_POINT_D65_Z: f64 = 108.883;
 
-/// Calculate Y (luminance) from ARGB
+/// Calculate Y (luminance) from ARGB  
+/// Returns Y in [0, 100] range where 100 is reference white
 pub(crate) fn y_from_argb(argb: u32) -> f64 {
     let [r, g, b] = linear_rgb_from_argb(argb);
-    SRGB_TO_XYZ[1][0] * r + SRGB_TO_XYZ[1][1] * g + SRGB_TO_XYZ[1][2] * b
+    100.0 * (SRGB_TO_XYZ[1][0] * r + SRGB_TO_XYZ[1][1] * g + SRGB_TO_XYZ[1][2] * b)
 }
 
 /// Convert Y (luminance) to L* (perceptual lightness)
-/// Y should be in range [0, 1] where 1 is reference white
+/// Y should be in range [0, 100] where 100 is reference white
 pub(crate) fn lstar_from_y(y: f64) -> f64 {
-    if y <= 216.0 / 24389.0 {
-        y * (24389.0 / 27.0)
+    // labF function from Material Design 3
+    let e = 216.0 / 24389.0;
+    let kappa = 24389.0 / 27.0;
+    let y_normalized = y / 100.0;
+    
+    if y_normalized <= e {
+        kappa * y_normalized
     } else {
-        116.0 * y.cbrt() - 16.0
+        116.0 * y_normalized.cbrt() - 16.0
     }
 }
 
 /// Convert L* to Y
 pub(crate) fn y_from_lstar(lstar: f64) -> f64 {
-    if lstar <= 8.0 {
-        lstar * 27.0 / 24389.0
+    // Returns Y in [0, 100] range as used by Material Design 3 HctSolver
+    let e = 216.0 / 24389.0;
+    let kappa = 24389.0 / 27.0;
+    let ft = (lstar + 16.0) / 116.0;
+    let ft3 = ft * ft * ft;
+    
+    100.0 * if ft3 > e {
+        ft3
     } else {
-        ((lstar + 16.0) / 116.0).powi(3)
+        (116.0 * ft - 16.0) / kappa
     }
 }
 
@@ -185,10 +197,10 @@ mod tests {
     fn test_lstar_from_y() {
         // Black
         assert!((lstar_from_y(0.0) - 0.0).abs() < 0.001);
-        // White
-        assert!((lstar_from_y(1.0) - 100.0).abs() < 0.001);
-        // Mid gray
-        assert!(lstar_from_y(0.18) > 40.0 && lstar_from_y(0.18) < 60.0);
+        // White (Y=100 in Material Design 3 convention)
+        assert!((lstar_from_y(100.0) - 100.0).abs() < 0.001);
+        // Mid gray (Y=18 is approximately 18% reflectance)
+        assert!(lstar_from_y(18.0) > 40.0 && lstar_from_y(18.0) < 60.0);
     }
 
     #[test]

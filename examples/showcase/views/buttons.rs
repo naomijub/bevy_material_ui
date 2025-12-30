@@ -37,6 +37,62 @@ pub fn spawn_buttons_section(parent: &mut ChildSpawnerCommands, theme: &Material
                     spawn_interactive_button(row, theme, "Tonal", ButtonVariant::FilledTonal);
                 });
 
+            section.spawn((
+                Text::new("Button Groups"),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(theme.on_surface),
+                Node {
+                    margin: UiRect::top(Val::Px(8.0)),
+                    ..default()
+                },
+            ));
+
+            section
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::FlexStart,
+                    column_gap: Val::Px(24.0),
+                    flex_wrap: FlexWrap::Wrap,
+                    margin: UiRect::vertical(Val::Px(8.0)),
+                    ..default()
+                })
+                .with_children(|row| {
+                    // Horizontal segmented (single selection)
+                    row.spawn((
+                        MaterialButtonGroup::new()
+                            .single_selection(true)
+                            .selection_required(true)
+                            .horizontal(),
+                        Node {
+                            ..default()
+                        },
+                    ))
+                    .with_children(|group| {
+                        spawn_toggle_button(group, theme, "Day", true);
+                        spawn_toggle_button(group, theme, "Week", false);
+                        spawn_toggle_button(group, theme, "Month", false);
+                    });
+
+                    // Vertical segmented (single selection)
+                    row.spawn((
+                        MaterialButtonGroup::new()
+                            .single_selection(true)
+                            .selection_required(true)
+                            .vertical(),
+                        Node {
+                            ..default()
+                        },
+                    ))
+                    .with_children(|group| {
+                        spawn_toggle_button(group, theme, "Low", false);
+                        spawn_toggle_button(group, theme, "Med", true);
+                        spawn_toggle_button(group, theme, "High", false);
+                    });
+                });
+
             spawn_code_block(
                 section,
                 theme,
@@ -53,6 +109,50 @@ commands.spawn((
     BorderRadius::all(Val::Px(20.0)),
 ));"#,
             );
+        });
+}
+
+fn spawn_toggle_button(
+    parent: &mut ChildSpawnerCommands,
+    theme: &MaterialTheme,
+    label: &str,
+    checked: bool,
+) {
+    let button = MaterialButton::new(label)
+        .with_variant(ButtonVariant::Outlined)
+        .checkable(true)
+        .checked(checked);
+
+    let text_color = button.text_color(theme);
+    let bg_color = button.background_color(theme);
+    let border_color = button.border_color(theme);
+
+    parent
+        .spawn((
+            button,
+            Button,
+            Interaction::None,
+            RippleHost::new(),
+            Node {
+                padding: UiRect::axes(Val::Px(24.0), Val::Px(10.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            BackgroundColor(bg_color),
+            BorderColor::all(border_color),
+            BorderRadius::all(Val::Px(CornerRadius::FULL)),
+        ))
+        .with_children(|btn| {
+            btn.spawn((
+                Text::new(label),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(text_color),
+            ));
         });
 }
 

@@ -202,7 +202,7 @@ fn spawn_adaptive_card(
                 ..default()
             })
             .with_children(|root| {
-                let _entities = spawn_navigation_suite_scaffold(
+                let _entities = layout::spawn_navigation_suite_scaffold(
                     root,
                     theme,
                     &size_class,
@@ -286,7 +286,7 @@ fn spawn_bottom_nav_card(
                 ..default()
             })
             .with_children(|root| {
-                let _entities = spawn_navigation_bar_scaffold(
+                let _entities = layout::spawn_navigation_bar_scaffold(
                     root,
                     theme,
                     &config,
@@ -368,7 +368,7 @@ fn spawn_nav_rail_card(
                 ..default()
             })
             .with_children(|root| {
-                let _entities = spawn_navigation_rail_scaffold(
+                let _entities = layout::spawn_navigation_rail_scaffold(
                     root,
                     theme,
                     &config,
@@ -453,7 +453,7 @@ fn spawn_modal_drawer_example(parent: &mut ChildSpawnerCommands, theme: Material
                 ..default()
             })
             .with_children(|root| {
-                let _entities = spawn_modal_drawer_scaffold(
+                let _entities = layout::spawn_modal_drawer_scaffold(
                     root,
                     &theme,
                     &config,
@@ -572,7 +572,7 @@ fn spawn_list_detail_card(parent: &mut ChildSpawnerCommands, theme: &MaterialThe
                 ..default()
             })
             .with_children(|root| {
-                let _entities: PaneEntities = spawn_list_detail_scaffold(
+                let _entities: PaneEntities = layout::spawn_list_detail_scaffold(
                     root,
                     theme,
                     &config,
@@ -657,7 +657,7 @@ fn spawn_supporting_panes_card(parent: &mut ChildSpawnerCommands, theme: &Materi
                 ..default()
             })
             .with_children(|root| {
-                let _entities: PaneEntities = spawn_supporting_panes_scaffold(
+                let _entities: PaneEntities = layout::spawn_supporting_panes_scaffold(
                     root,
                     theme,
                     &config,

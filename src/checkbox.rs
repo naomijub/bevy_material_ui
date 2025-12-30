@@ -14,6 +14,7 @@ use crate::{
     icons::{MaterialIconFont, ICON_CHECK, ICON_REMOVE},
     motion::{ease_emphasized_decelerate, StateLayer},
     ripple::RippleHost,
+    telemetry::{InsertTestIdIfExists, TelemetryConfig, TestId},
     theme::MaterialTheme,
     tokens::{CornerRadius, Duration},
 };
@@ -30,9 +31,71 @@ impl Plugin for CheckboxPlugin {
                 checkbox_visual_update_system,
                 checkbox_theme_refresh_system,
                 checkbox_animation_system,
+                checkbox_telemetry_system,
             )
                 .chain(),
         );
+            if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+                app.add_plugins(crate::MaterialUiCorePlugin);
+            }
+    }
+}
+
+fn checkbox_telemetry_system(
+    mut commands: Commands,
+    telemetry: Option<Res<TelemetryConfig>>,
+    checkboxes: Query<(&TestId, &Children), With<MaterialCheckbox>>,
+    children_query: Query<&Children>,
+    checkbox_boxes: Query<(), With<CheckboxBox>>,
+    checkbox_icons: Query<(), With<CheckboxIcon>>,
+    checkbox_state_layers: Query<(), With<CheckboxStateLayer>>,
+) {
+    let Some(telemetry) = telemetry else { return };
+    if !telemetry.enabled {
+        return;
+    }
+
+    for (test_id, children) in checkboxes.iter() {
+        let base = test_id.id();
+
+        let mut found_box = false;
+        let mut found_icon = false;
+        let mut found_state_layer = false;
+
+        let mut stack: Vec<Entity> = children.iter().collect();
+        while let Some(entity) = stack.pop() {
+            if !found_box && checkbox_boxes.get(entity).is_ok() {
+                found_box = true;
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    id: format!("{base}/box"),
+                });
+            }
+
+            if !found_icon && checkbox_icons.get(entity).is_ok() {
+                found_icon = true;
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    id: format!("{base}/icon"),
+                });
+            }
+
+            if !found_state_layer && checkbox_state_layers.get(entity).is_ok() {
+                found_state_layer = true;
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    id: format!("{base}/state_layer"),
+                });
+            }
+
+            if found_box && found_icon && found_state_layer {
+                break;
+            }
+
+            if let Ok(children) = children_query.get(entity) {
+                stack.extend(children.iter());
+            }
+        }
     }
 }
 

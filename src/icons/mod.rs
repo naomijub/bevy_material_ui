@@ -47,6 +47,15 @@ pub use codepoints::*;
 pub use icon::{IconBundle, MaterialIcon};
 pub use style::{IconGrade, IconOpticalSize, IconStyle, IconWeight};
 
+/// All icon codepoints discovered in the embedded font.
+///
+/// This module is generated at compile time by scanning the embedded
+/// `MaterialSymbolsOutlined.ttf` and exporting a `ICON_CP_<HEX>` constant for
+/// every codepoint in the Private Use Areas that maps to a glyph.
+pub mod all_codepoints {
+    include!(concat!(env!("OUT_DIR"), "/material_symbols_codepoints.rs"));
+}
+
 /// Embedded Material Symbols font data (compiled into the binary)
 /// This eliminates file I/O and ensures the font is always available
 pub const EMBEDDED_MATERIAL_SYMBOLS_FONT: &[u8] =

@@ -272,7 +272,7 @@ fn setup(mut commands: Commands, theme: Res<MaterialTheme>, state: Res<PaletteTo
                     flex_direction: FlexDirection::Column,
                     padding: UiRect::all(Val::Px(16.0)),
                     row_gap: Val::Px(16.0),
-                    overflow: Overflow::scroll_y(),
+                    overflow: Overflow::scroll(),
                     ..default()
                 },
                 BackgroundColor(theme.surface),
@@ -995,3 +995,4 @@ fn copy_to_clipboard_best_effort(text: &str) -> Result<(), String> {
         Err(format!("clip exited with status {status}"))
     }
 }
+

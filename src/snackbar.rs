@@ -22,6 +22,9 @@ pub struct SnackbarPlugin;
 
 impl Plugin for SnackbarPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+            app.add_plugins(crate::MaterialUiCorePlugin);
+        }
         app.add_message::<ShowSnackbar>()
             .add_message::<DismissSnackbar>()
             .add_message::<SnackbarActionEvent>()

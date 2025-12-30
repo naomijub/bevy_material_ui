@@ -32,6 +32,9 @@ pub struct TextFieldPlugin;
 
 impl Plugin for TextFieldPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+            app.add_plugins(crate::MaterialUiCorePlugin);
+        }
         app.add_message::<TextFieldChangeEvent>()
             .add_message::<TextFieldSubmitEvent>()
             .init_resource::<ActiveTextField>()

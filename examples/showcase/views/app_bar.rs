@@ -6,6 +6,7 @@ use bevy_material_ui::icons::{
 };
 use bevy_material_ui::prelude::*;
 use bevy_material_ui::text_field::{spawn_text_field_control, InputType};
+use bevy_material_ui::app_bar::SpawnTopAppBarWithRightContentChild;
 
 use crate::showcase::common::*;
 

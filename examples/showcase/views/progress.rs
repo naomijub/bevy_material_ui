@@ -60,6 +60,7 @@ pub fn spawn_progress_section(parent: &mut ChildSpawnerCommands, theme: &Materia
                             LinearProgressBuilder::new()
                                 .indeterminate()
                                 .width(Val::Px(200.0))
+                                .height_px(8.0)
                                 .build(theme),
                         );
                     });
@@ -129,6 +130,7 @@ fn spawn_animated_linear_progress(
                 LinearProgressBuilder::new()
                     .progress(initial)
                     .width(Val::Px(200.0))
+                    .height_px(8.0)
                     .build(theme),
             ));
         });

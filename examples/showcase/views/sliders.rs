@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
+use bevy_material_ui::slider::spawn_slider_control;
 
 use crate::showcase::common::*;
 
@@ -35,6 +36,38 @@ pub fn spawn_sliders_section(parent: &mut ChildSpawnerCommands, theme: &Material
 
                     // Discrete slider with ticks
                     col.spawn_discrete_slider(theme, 0.0, 100.0, 60.0, 20.0, Some("Discrete"));
+
+                    // Vertical slider
+                    col.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        column_gap: Val::Px(16.0),
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        row.spawn((
+                            Text::new("Vertical"),
+                            TextFont {
+                                font_size: 12.0,
+                                ..default()
+                            },
+                            TextColor(theme.on_surface_variant),
+                            Node {
+                                width: Val::Px(64.0),
+                                ..default()
+                            },
+                        ));
+
+                        row.spawn(Node {
+                            width: Val::Px(48.0),
+                            height: Val::Px(220.0),
+                            ..default()
+                        })
+                        .with_children(|slot| {
+                            let slider = MaterialSlider::new(0.0, 1.0).with_value(0.5).vertical();
+                            spawn_slider_control(slot, theme, slider);
+                        });
+                    });
                 });
 
             spawn_code_block(

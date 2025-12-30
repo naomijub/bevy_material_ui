@@ -17,6 +17,9 @@ pub struct SearchPlugin;
 
 impl Plugin for SearchPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+            app.add_plugins(crate::MaterialUiCorePlugin);
+        }
         app.add_message::<SearchBarClickEvent>()
             .add_message::<SearchQueryEvent>()
             .add_systems(Update, search_bar_interaction_system);

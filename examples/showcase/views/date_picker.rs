@@ -1,12 +1,12 @@
-//! DateTime picker view for the showcase application.
+//! Date Picker view for the showcase application.
 
 use bevy::prelude::*;
 use bevy_material_ui::prelude::*;
 
 use crate::showcase::common::*;
 
-/// Spawn the date-time picker section content
-pub fn spawn_datetime_picker_section(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme) {
+/// Spawn the date picker section content
+pub fn spawn_date_picker_section(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme) {
     parent
         .spawn(Node {
             width: Val::Percent(100.0),
@@ -19,18 +19,16 @@ pub fn spawn_datetime_picker_section(parent: &mut ChildSpawnerCommands, theme: &
             spawn_section_header(
                 section,
                 theme,
-                "DateTime Picker",
-                "Dialog-based date & time selection",
+                "Date Picker",
+                "Material Design 3 calendar-based date selection",
             );
 
             // Picker overlay (hidden until opened)
-            let picker_entity = section.spawn_datetime_picker_entity_with(
+            let picker_entity = section.spawn_date_picker(
                 theme,
-                DateTimePickerBuilder::new()
-                    .title("Select date & time")
-                    .date(Date::new(2025, 1, 15))
-                    .time(13, 30)
-                    .time_format(TimeFormat::H12)
+                DatePickerBuilder::new()
+                    .title("Select Date")
+                    .single_date(Date::new(2025, 1, 15))
                     .width(Val::Px(360.0)),
             );
 
@@ -42,12 +40,12 @@ pub fn spawn_datetime_picker_section(parent: &mut ChildSpawnerCommands, theme: &
                     ..default()
                 })
                 .with_children(|row| {
-                    let label = "Open Picker";
+                    let label = "Open Date Picker";
                     let btn = MaterialButton::new(label).with_variant(ButtonVariant::Filled);
                     let text_color = btn.text_color(theme);
 
                     row.spawn((
-                        DateTimePickerOpenButton(picker_entity),
+                        DatePickerOpenButton(picker_entity),
                         Interaction::None,
                         MaterialButtonBuilder::new(label).filled().build(theme),
                     ))
@@ -64,7 +62,7 @@ pub fn spawn_datetime_picker_section(parent: &mut ChildSpawnerCommands, theme: &
                     });
 
                     row.spawn((
-                        DateTimePickerResultDisplay(picker_entity),
+                        DatePickerResultDisplay(picker_entity),
                         Text::new("Result: None"),
                         TextFont {
                             font_size: 14.0,
@@ -77,26 +75,32 @@ pub fn spawn_datetime_picker_section(parent: &mut ChildSpawnerCommands, theme: &
             spawn_code_block(
                 section,
                 theme,
-                r#"// Spawn a dialog-based date-time picker
-section.spawn_datetime_picker_with(
+                r#"// Spawn a Material Design 3 date picker
+section.spawn_date_picker(
     theme,
-    DateTimePickerBuilder::new()
-        .title(\"Select date & time\")
-        .open()
-        .min_date(Date::new(2025, 1, 1))
-        .max_date(Date::new(2025, 12, 31))
+    DatePickerBuilder::new()
+        .title("Select Date")
+        .single_date(Date::new(2025, 1, 15))
+        .width(Val::Px(360.0))
 );
 
 // Listen for submit/cancel messages
 fn handle_picker_events(
-    mut submit: MessageReader<DateTimePickerSubmitEvent>,
-    mut cancel: MessageReader<DateTimePickerCancelEvent>,
+    mut submit: MessageReader<DatePickerSubmitEvent>,
+    mut cancel: MessageReader<DatePickerCancelEvent>,
 ) {
     for ev in submit.read() {
-        info!(\"Picked: {:?} {:02}:{:02}\", ev.date, ev.hour, ev.minute);
+        match &ev.selection {
+            DateSelection::Single(date) => {
+                info!("Selected: {:?}", date);
+            }
+            DateSelection::Range { start, end } => {
+                info!("Range: {:?} to {:?}", start, end);
+            }
+        }
     }
     for _ in cancel.read() {
-        info!(\"Picker canceled\");
+        info!("Picker canceled");
     }
 }"#,
             );

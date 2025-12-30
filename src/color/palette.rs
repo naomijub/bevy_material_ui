@@ -129,13 +129,12 @@ impl CorePalette {
     /// Create a CorePalette from a seed HCT color
     pub fn from_hct(seed: &Hct) -> Self {
         let hue = seed.hue();
-        let _chroma = seed.chroma();
+        let chroma = seed.chroma();
 
         Self {
-            // Material 3 uses fixed chroma targets for its core palettes.
-            // Using the seed's chroma directly makes many seeds look "off" compared to the
-            // reference Material algorithm.
-            primary: TonalPalette::new(hue, 48.0),
+            // Material 3 formula: primary uses max(48.0, seed_chroma) to preserve
+            // vibrancy of highly chromatic seed colors while ensuring minimum chroma
+            primary: TonalPalette::new(hue, chroma.max(48.0)),
 
             // Secondary uses the same hue with reduced chroma (16)
             secondary: TonalPalette::new(hue, 16.0),

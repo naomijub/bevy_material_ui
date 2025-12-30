@@ -20,6 +20,9 @@ pub struct AppBarPlugin;
 
 impl Plugin for AppBarPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+            app.add_plugins(crate::MaterialUiCorePlugin);
+        }
         app.add_message::<AppBarNavigationEvent>()
             .add_message::<AppBarActionEvent>()
             .add_systems(

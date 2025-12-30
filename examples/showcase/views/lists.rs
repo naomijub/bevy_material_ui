@@ -67,6 +67,7 @@ pub fn spawn_list_section(
                 });
 
             let icon_font_clone = icon_font.clone();
+            let list_height_px = 4.0 * bevy_material_ui::list::ListItemVariant::TwoLine.height();
             // Container for list with scrollbar
             section
                 .spawn(Node {
@@ -92,6 +93,21 @@ pub fn spawn_list_section(
                             BorderRadius::all(Val::Px(12.0)),
                             Interaction::None, // Enable hover detection
                         ))
+                        // Ensure a deterministic height so the scroll container can't collapse.
+                        // NOTE: `build_scrollable()` already adds a `Node`; using `.insert(Node {..})`
+                        // replaces it without creating duplicate components.
+                        // IMPORTANT: overflow is copied to ScrollContent by ScrollPlugin!
+                        .insert(Node {
+                            flex_direction: FlexDirection::Column,
+                            width: Val::Percent(100.0),
+                            height: Val::Px(list_height_px),
+                            max_height: Val::Px(list_height_px),
+                            // Important for flex + scroll containers; allows shrinking.
+                            min_height: Val::Px(0.0),
+                            padding: UiRect::vertical(Val::Px(Spacing::SMALL)),
+                            overflow: Overflow::scroll(),
+                            ..default()
+                        })
                         .with_children(|list| {
                             // 10 list items
                             let items = [
@@ -159,14 +175,129 @@ pub fn spawn_list_section(
                                     });
                                 });
                             }
-
-                            // Framework scrollbars (track + thumb) driven by ScrollPlugin
-                            spawn_scrollbars(list, &theme_clone, ScrollDirection::Vertical);
+                            // Note: Scrollbars spawn automatically via ScrollPlugin's ensure_scrollbars_system
+                            // because ScrollContainerBuilder defaults to show_scrollbars=true.
+                            // No manual spawn_scrollbars() call needed!
                         })
                         .id();
 
                     // Keep the entity id around for future selection/scroll interactions.
                     let _ = scroll_area_id;
+                });
+
+            // Explicit scrollbar orientation demos (vertical/horizontal/both)
+            section
+                .spawn(Node {
+                    flex_direction: FlexDirection::Column,
+                    row_gap: Val::Px(12.0),
+                    margin: UiRect::top(Val::Px(16.0)),
+                    ..default()
+                })
+                .with_children(|demo| {
+                    demo.spawn((
+                        Text::new("Scrollbar orientations"),
+                        TextFont {
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(theme_clone.on_surface),
+                    ));
+
+                    demo.spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(12.0),
+                        flex_wrap: FlexWrap::Wrap,
+                        ..default()
+                    })
+                    .with_children(|row| {
+                        // Horizontal scrollbar
+                        row.spawn((
+                            TestId::new("scroll_demo_horizontal"),
+                            ScrollContainerBuilder::new().horizontal().build(),
+                            ScrollPosition::default(),
+                            Node {
+                                width: Val::Px(400.0),
+                                height: Val::Px(120.0),
+                                // Both axes must be Scroll (direction controlled by ScrollContainer)
+                                overflow: Overflow::scroll(),
+                                padding: UiRect::all(Val::Px(12.0)),
+                                flex_direction: FlexDirection::Row,
+                                column_gap: Val::Px(12.0),
+                                ..default()
+                            },
+                            BackgroundColor(theme_clone.surface_container_low),
+                            BorderRadius::all(Val::Px(12.0)),
+                            Interaction::None,
+                        ))
+                        .with_children(|scroller| {
+                            for i in 1..=18 {
+                                scroller.spawn((
+                                    Node {
+                                        width: Val::Px(84.0),
+                                        height: Val::Px(72.0),
+                                        ..default()
+                                    },
+                                    BackgroundColor(if i % 2 == 0 {
+                                        theme_clone.secondary_container
+                                    } else {
+                                        theme_clone.primary_container
+                                    }),
+                                    BorderRadius::all(Val::Px(12.0)),
+                                ));
+                            }
+                            // Scrollbars spawn automatically (show_scrollbars=true by default)
+                        });
+
+                        // Both directions
+                        row.spawn((
+                            TestId::new("scroll_demo_both"),
+                            ScrollContainerBuilder::new().both().build(),
+                            ScrollPosition::default(),
+                            Node {
+                                width: Val::Px(400.0),
+                                height: Val::Px(180.0),
+                                // Both axes must be Scroll
+                                overflow: Overflow::scroll(),
+                                padding: UiRect::all(Val::Px(12.0)),
+                                ..default()
+                            },
+                            BackgroundColor(theme_clone.surface_container_low),
+                            BorderRadius::all(Val::Px(12.0)),
+                            Interaction::None,
+                        ))
+                        .with_children(|scroller| {
+                            scroller
+                                .spawn(Node {
+                                    width: Val::Px(760.0),
+                                    height: Val::Px(380.0),
+                                    flex_direction: FlexDirection::Row,
+                                    flex_wrap: FlexWrap::Wrap,
+                                    row_gap: Val::Px(12.0),
+                                    column_gap: Val::Px(12.0),
+                                    ..default()
+                                })
+                                .with_children(|content| {
+                                    for i in 1..=30 {
+                                        content.spawn((
+                                            Node {
+                                                width: Val::Px(120.0),
+                                                height: Val::Px(72.0),
+                                                ..default()
+                                            },
+                                            BackgroundColor(if i % 3 == 0 {
+                                                theme_clone.tertiary_container
+                                            } else if i % 2 == 0 {
+                                                theme_clone.secondary_container
+                                            } else {
+                                                theme_clone.primary_container
+                                            }),
+                                            BorderRadius::all(Val::Px(12.0)),
+                                        ));
+                                    }
+                                });
+                            // Scrollbars spawn automatically
+                        });
+                    });
                 });
 
             spawn_code_block(
@@ -226,3 +357,4 @@ fn spawn_list_mode_option(
             ));
         });
 }
+

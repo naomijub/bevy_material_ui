@@ -24,6 +24,9 @@ pub struct TooltipPlugin;
 
 impl Plugin for TooltipPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+            app.add_plugins(crate::MaterialUiCorePlugin);
+        }
         app.add_systems(Startup, setup_tooltip_overlay).add_systems(
             Update,
             (

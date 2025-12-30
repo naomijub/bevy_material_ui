@@ -44,7 +44,7 @@ fn setup(mut commands: Commands, theme: Res<MaterialTheme>, icon_font: Res<Mater
                 Node {
                     width: Val::Percent(100.0),
                     height: Val::Percent(100.0),
-                    overflow: Overflow::scroll_y(),
+                    overflow: Overflow::scroll(),
                     ..default()
                 },
             ))
@@ -184,3 +184,4 @@ fn collect_font_codepoints() -> Vec<char> {
 
     out
 }
+

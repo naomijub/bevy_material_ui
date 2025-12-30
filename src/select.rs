@@ -8,6 +8,7 @@ use bevy::prelude::*;
 use crate::{
     icons::MaterialIcon,
     icons::MaterialIconFont,
+    telemetry::{InsertTestIdIfExists, TelemetryConfig, TestId},
     theme::MaterialTheme,
     tokens::{CornerRadius, Spacing},
 };
@@ -17,6 +18,9 @@ pub struct SelectPlugin;
 
 impl Plugin for SelectPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<crate::MaterialUiCorePlugin>() {
+            app.add_plugins(crate::MaterialUiCorePlugin);
+        }
         app.add_message::<SelectChangeEvent>().add_systems(
             Update,
             (
@@ -27,8 +31,115 @@ impl Plugin for SelectPlugin {
                 select_dropdown_sync_system,
                 select_option_interaction_system,
                 select_option_icon_font_system,
+                select_telemetry_system,
             ),
         );
+    }
+}
+
+fn select_telemetry_system(
+    mut commands: Commands,
+    telemetry: Option<Res<TelemetryConfig>>,
+    selects: Query<(&TestId, &Children), With<MaterialSelect>>,
+    children_query: Query<&Children>,
+    display_texts: Query<(), With<SelectDisplayText>>,
+    arrows: Query<(), With<SelectDropdownArrow>>,
+    dropdowns: Query<(), With<SelectDropdown>>,
+    option_rows: Query<&SelectOptionItem>,
+    option_labels: Query<(), With<SelectOptionLabelText>>,
+    option_icons: Query<(), With<SelectOptionIcon>>,
+) {
+    let Some(telemetry) = telemetry else {
+        return;
+    };
+    if !telemetry.enabled {
+        return;
+    }
+
+    for (test_id, children) in selects.iter() {
+        let base = test_id.id();
+
+        let mut found_display = false;
+        let mut found_arrow = false;
+        let mut found_dropdown = false;
+
+        let mut options: Vec<(Entity, usize)> = Vec::new();
+
+        let mut stack: Vec<Entity> = children.iter().collect();
+        while let Some(entity) = stack.pop() {
+            if !found_display && display_texts.get(entity).is_ok() {
+                found_display = true;
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    id: format!("{base}/display_text"),
+                });
+            }
+
+            if !found_arrow && arrows.get(entity).is_ok() {
+                found_arrow = true;
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    id: format!("{base}/arrow"),
+                });
+            }
+
+            if !found_dropdown && dropdowns.get(entity).is_ok() {
+                found_dropdown = true;
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    id: format!("{base}/dropdown"),
+                });
+            }
+
+            if let Ok(option) = option_rows.get(entity) {
+                let option_base = format!("{base}/option/{}", option.index);
+                commands.queue(InsertTestIdIfExists {
+                    entity,
+                    id: option_base.clone(),
+                });
+                options.push((entity, option.index));
+            }
+
+            if let Ok(children) = children_query.get(entity) {
+                stack.extend(children.iter());
+            }
+        }
+
+        // Tag label/icon nodes under each option row with stable derived IDs.
+        for (row_entity, index) in options {
+            let Ok(children) = children_query.get(row_entity) else {
+                continue;
+            };
+
+            let mut found_label = false;
+            let mut found_icon = false;
+            let mut stack: Vec<Entity> = children.iter().collect();
+            while let Some(entity) = stack.pop() {
+                if !found_icon && option_icons.get(entity).is_ok() {
+                    found_icon = true;
+                    commands.queue(InsertTestIdIfExists {
+                        entity,
+                        id: format!("{base}/option/{index}/icon"),
+                    });
+                }
+
+                if !found_label && option_labels.get(entity).is_ok() {
+                    found_label = true;
+                    commands.queue(InsertTestIdIfExists {
+                        entity,
+                        id: format!("{base}/option/{index}/label"),
+                    });
+                }
+
+                if found_label && found_icon {
+                    break;
+                }
+
+                if let Ok(children) = children_query.get(entity) {
+                    stack.extend(children.iter());
+                }
+            }
+        }
     }
 }
 
