@@ -951,6 +951,7 @@ dependencies = [
  "arboard",
  "bevy",
  "criterion",
+ "hct-cam16",
  "png 0.17.16",
  "serde_json",
  "walkdir",
@@ -2786,6 +2787,12 @@ dependencies = [
  "serde",
  "serde_core",
 ]
+
+[[package]]
+name = "hct-cam16"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca0a3a885db36209256935456d4d8a6f420e34ce7a155ad16be3bd9c8ef94e3e"
 
 [[package]]
 name = "heapless"
