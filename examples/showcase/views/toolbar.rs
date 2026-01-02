@@ -10,9 +10,8 @@ use crate::showcase::common::*;
 pub fn spawn_toolbar_section(
     parent: &mut ChildSpawnerCommands,
     theme: &MaterialTheme,
-    icon_font: Handle<Font>,
+    _icon_font: Handle<Font>,
 ) {
-    let _ = icon_font;
     parent
         .spawn(Node {
             flex_direction: FlexDirection::Column,
