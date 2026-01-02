@@ -14,6 +14,10 @@ use crate::{
     tokens::Spacing,
 };
 
+/// Maximum depth to traverse when searching for ancestor entities.
+/// This prevents infinite loops in case of circular references or pathological entity hierarchies.
+const MAX_ANCESTOR_DEPTH: usize = 32;
+
 fn resolve_icon_id(icon: &str) -> Option<crate::icons::material_icons::IconId> {
     let icon = icon.trim();
     if icon.is_empty() {
@@ -273,7 +277,7 @@ fn list_selection_system(
         // Find the nearest ancestor that is a MaterialList.
         let mut current = Some(event.entity);
         let mut list_entity = None;
-        for _ in 0..32 {
+        for _ in 0..MAX_ANCESTOR_DEPTH {
             let Some(e) = current else { break };
             if lists.get(e).is_ok() {
                 list_entity = Some(e);

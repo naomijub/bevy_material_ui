@@ -24,6 +24,10 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::picking::hover::HoverMap;
+
+/// Maximum depth to traverse when searching for ancestor entities.
+/// This prevents infinite loops in case of circular references or pathological entity hierarchies.
+const MAX_ANCESTOR_DEPTH: usize = 32;
 use bevy::picking::Pickable;
 use bevy::ecs::system::Command;
 use bevy::ui::UiSystems;
@@ -221,7 +225,7 @@ fn assign_scrollbar_test_ids_system(
         test_ids: &Query<&TestId>,
     ) -> Option<String> {
         let mut current = Some(start);
-        for _ in 0..32 {
+        for _ in 0..MAX_ANCESTOR_DEPTH {
             let Some(entity) = current else { break };
             if let Ok(id) = test_ids.get(entity) {
                 return Some(id.id().to_string());
@@ -725,7 +729,7 @@ fn mouse_wheel_scroll_system(
                 // Walk up the parent hierarchy until we find a ScrollContainer.
                 let mut current = Some(entity);
                 let mut container_entity = None;
-                for _ in 0..32 {
+                for _ in 0..MAX_ANCESTOR_DEPTH {
                     let Some(e) = current else { break };
                     if scrollable_query.get(e).is_ok() {
                         container_entity = Some(e);

@@ -16,6 +16,10 @@ use crate::{
     tokens::{CornerRadius, Spacing},
 };
 
+/// Maximum depth to traverse when searching for ancestor entities.
+/// This prevents infinite loops in case of circular references or pathological entity hierarchies.
+const MAX_ANCESTOR_DEPTH: usize = 32;
+
 /// Plugin for app bar components
 pub struct AppBarPlugin;
 
@@ -1089,7 +1093,7 @@ fn app_bar_interaction_system(
     mut action_events: MessageWriter<AppBarActionEvent>,
 ) {
     let find_app_bar_ancestor = |mut cursor: Entity| {
-        for _ in 0..32 {
+        for _ in 0..MAX_ANCESTOR_DEPTH {
             if app_bars.get(cursor).is_ok() {
                 return Some(cursor);
             }
