@@ -17,7 +17,12 @@ use crate::{
 };
 
 /// Maximum depth to traverse when searching for ancestor entities.
-/// This prevents infinite loops in case of circular references or pathological entity hierarchies.
+///
+/// In typical Material Design–style UI layouts (see module-level reference), the widget
+/// hierarchy is only a handful of levels deep (usually well under 10). A value of 32 is
+/// therefore a conservative upper bound: it is far larger than any realistic app bar
+/// hierarchy, but still finite, so it reliably prevents infinite loops in the presence
+/// of circular references or otherwise corrupted/pathological entity hierarchies.
 const MAX_ANCESTOR_DEPTH: usize = 32;
 
 /// Plugin for app bar components
