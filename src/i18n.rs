@@ -250,7 +250,18 @@ fn i18n_ingest_assets_system(
                 }
             }
             AssetEvent::Removed { .. } => {
-                // Ignore removals for now (keeps last-known bundle). This avoids flicker when using hot-reload.
+                // DESIGN TRADE-OFF: We intentionally ignore asset removal events to preserve
+                // translation strings in the runtime resource. This prevents UI text from
+                // flickering or reverting to keys during hot-reload workflows.
+                //
+                // Consequence: If a translation file is removed from the project, its strings
+                // remain in MaterialI18n until the application is restarted. For most
+                // development scenarios, this behavior is desirable as it prioritizes
+                // visual stability over immediate reflection of file deletions.
+                //
+                // Alternative: If immediate removal is required, call
+                // `MaterialI18n::clear()` or selectively remove bundles via
+                // `MaterialI18n` methods after detecting the asset removal.
             }
             _ => {}
         }

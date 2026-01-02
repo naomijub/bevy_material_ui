@@ -2023,14 +2023,12 @@ impl SpawnDatePicker for ChildSpawnerCommands<'_> {
                     .with_children(|text_area| match builder.mode {
                         DatePickerMode::Single => {
                             let date_text = match builder.initial_selection.as_ref() {
-                                Some(DateSelection::Single(date)) => format!(
-                                    "{:02}/{:02}/{:04}",
-                                    date.month, date.day, date.year
-                                ),
-                                Some(DateSelection::Range { start, .. }) => format!(
-                                    "{:02}/{:02}/{:04}",
-                                    start.month, start.day, start.year
-                                ),
+                                Some(DateSelection::Single(date)) => {
+                                    format!("{:02}/{:02}/{:04}", date.month, date.day, date.year)
+                                }
+                                Some(DateSelection::Range { start, .. }) => {
+                                    format!("{:02}/{:02}/{:04}", start.month, start.day, start.year)
+                                }
                                 _ => String::new(),
                             };
 
