@@ -1,6 +1,7 @@
 //! Date picker type definitions
 
 use std::fmt;
+use bevy::prelude::*;
 
 /// Day of week
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -79,8 +80,50 @@ impl Date {
         self.day >= 1 && (self.day as u32) <= dim
     }
 
+    /// Returns the current date.
+    /// 
+    /// # Warning: Placeholder Implementation
+    /// 
+    /// This is a **placeholder** that returns a hardcoded date (2025-01-01).
+    /// 
+    /// For production use, you should:
+    /// 1. Use the `CurrentDate` resource to provide the actual date
+    /// 2. Or integrate with a date/time crate like `chrono` or `time`
+    /// 
+    /// # Example with CurrentDate resource
+    /// 
+    /// ```rust,ignore
+    /// use bevy::prelude::*;
+    /// use bevy_material_ui::date_picker::{Date, CurrentDate};
+    /// 
+    /// fn setup(mut commands: Commands) {
+    ///     // Set current date from your date/time source
+    ///     commands.insert_resource(CurrentDate(Date::new(2026, 1, 2)));
+    /// }
+    /// 
+    /// fn use_date(current: Res<CurrentDate>) {
+    ///     let today = current.0;
+    /// }
+    /// ```
+    /// 
+    /// # Example with chrono
+    /// 
+    /// ```rust,ignore
+    /// use chrono::Local;
+    /// use bevy_material_ui::date_picker::{Date, CurrentDate};
+    /// 
+    /// fn update_current_date(mut current: ResMut<CurrentDate>) {
+    ///     let now = Local::now().naive_local().date();
+    ///     current.0 = Date::new(
+    ///         now.year(),
+    ///         now.month() as u8,
+    ///         now.day() as u8,
+    ///     );
+    /// }
+    /// ```
     pub fn today() -> Self {
-        // For now, return a placeholder. In real app, use chrono or time crate
+        // PLACEHOLDER: Returns hardcoded date for development/testing
+        // Production apps should use CurrentDate resource or integrate with date/time crates
         Self::new(2025, 1, 1)
     }
 }
@@ -278,5 +321,53 @@ pub fn weekday_index(w: Weekday) -> i32 {
         Weekday::Thu => 4,
         Weekday::Fri => 5,
         Weekday::Sat => 6,
+    }
+}
+
+/// Bevy resource for providing the current date to the date picker.
+/// 
+/// By default, `Date::today()` returns a hardcoded placeholder date (2025-01-01).
+/// Applications should insert this resource with the actual current date.
+/// 
+/// # Example
+/// 
+/// ```rust,ignore
+/// use bevy::prelude::*;
+/// use bevy_material_ui::date_picker::{Date, CurrentDate};
+/// 
+/// fn setup(mut commands: Commands) {
+///     // Insert current date from your date/time source
+///     commands.insert_resource(CurrentDate(Date::new(2026, 1, 2)));
+/// }
+/// 
+/// // Update periodically if needed
+/// fn update_date_daily(mut current: ResMut<CurrentDate>) {
+///     // Update from your date/time source (chrono, time crate, etc.)
+///     // current.0 = Date::new(year, month, day);
+/// }
+/// ```
+/// 
+/// # Example with chrono
+/// 
+/// ```rust,ignore
+/// use chrono::Local;
+/// use bevy::prelude::*;
+/// use bevy_material_ui::date_picker::{Date, CurrentDate};
+/// 
+/// fn setup_with_chrono(mut commands: Commands) {
+///     let now = Local::now().naive_local().date();
+///     commands.insert_resource(CurrentDate(Date::new(
+///         now.year(),
+///         now.month() as u8,
+///         now.day() as u8,
+///     )));
+/// }
+/// ```
+#[derive(Debug, Clone, Copy, Resource)]
+pub struct CurrentDate(pub Date);
+
+impl Default for CurrentDate {
+    fn default() -> Self {
+        Self(Date::today())
     }
 }

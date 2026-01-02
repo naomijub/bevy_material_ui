@@ -732,7 +732,9 @@ fn date_picker_rebuild_content_system(
     )>,
     children_query: Query<&Children>,
     theme: Res<MaterialTheme>,
+    current_date: Option<Res<CurrentDate>>,
 ) {
+    let today = current_date.map(|cd| cd.0).unwrap_or_else(Date::today);
     for (picker_entity, picker) in pickers.iter() {
         if !picker.open {
             continue;
@@ -845,7 +847,7 @@ fn date_picker_rebuild_content_system(
                                 if day_offset >= 0 && day_offset < days_in_month as i32 {
                                     let day_number = (day_offset + 1) as u8;
                                     let date = Date::new(display_month.year, display_month.month, day_number);
-                                    let is_today = date == Date::today();
+                                    let is_today = date == today;
                                     let is_valid = picker.constraints.validator.is_valid(date);
 
                                     let base_text_color = if is_valid {
@@ -1355,8 +1357,10 @@ fn date_picker_render_system(
     theme: Res<MaterialTheme>,
     locale: Res<MaterialLocale>,
     locale_overrides: Query<&MaterialLocaleOverride>,
+    current_date: Option<Res<CurrentDate>>,
 ) {
     let locale_changed = locale.is_changed();
+    let today = current_date.map(|cd| cd.0).unwrap_or_else(Date::today);
 
     if locale_changed {
         for (picker_entity, picker) in pickers.p1().iter() {
@@ -1577,7 +1581,7 @@ fn date_picker_render_system(
             }
             
             if let Some(date) = cell.date {
-                let is_today = date == Date::today();
+                let is_today = date == today;
                 let is_valid = picker.constraints.validator.is_valid(date);
                 let is_selected = match &selection {
                     Some(DateSelection::Single(selected)) => date == *selected,
@@ -2235,6 +2239,8 @@ impl SpawnDatePicker for ChildSpawnerCommands<'_> {
                                 if day_offset >= 0 && day_offset < days_in_month as i32 {
                                     let day_number = (day_offset + 1) as u8;
                                     let date = Date::new(display_month.year, display_month.month, day_number);
+                                    // Note: Initial spawn uses Date::today() placeholder
+                                    // Systems will update highlighting using CurrentDate resource if available
                                     let is_today = date == Date::today();
                                     let is_valid = builder.constraints.validator.is_valid(date);
                                     
