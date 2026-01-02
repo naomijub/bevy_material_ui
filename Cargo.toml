@@ -33,6 +33,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 # Bevy Game Engine - Latest version
 bevy = "0.17.3"
 serde_json = "1.0"
+thiserror = "1.0"
 
 # Pure Rust CAM16 + HCT solver
 hct-cam16 = "0.1.0"

@@ -17,7 +17,9 @@ pub fn spawn_cards_section(parent: &mut ChildSpawnerCommands, theme: &MaterialTh
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.cards.title",
                 "Cards",
+                "showcase.section.cards.description",
                 "Containers for related content and actions",
             );
 

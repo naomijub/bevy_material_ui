@@ -20,7 +20,9 @@ pub fn spawn_time_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.time_picker.title",
                 "Time Picker",
+                "showcase.section.time_picker.description",
                 "Material Design 3 clock-based time selection",
             );
 
@@ -28,7 +30,7 @@ pub fn spawn_time_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
             let picker_entity = section.spawn_time_picker(
                 theme,
                 TimePickerBuilder::new()
-                    .title("Select Time")
+                    .title_key("showcase.time_picker.title")
                     .initial_time(13, 30)
                     .format(TimeFormat::H24)
                     .width(Val::Px(360.0)),
@@ -42,19 +44,20 @@ pub fn spawn_time_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
                     ..default()
                 })
                 .with_children(|row| {
-                    let label = "Open Time Picker";
-                    let btn = MaterialButton::new(label).with_variant(ButtonVariant::Filled);
+                    let btn = MaterialButton::new("").with_variant(ButtonVariant::Filled);
                     let text_color = btn.text_color(theme);
 
                     row.spawn((
                         TimePickerOpenButton(picker_entity),
                         Interaction::None,
-                        MaterialButtonBuilder::new(label).filled().build(theme),
+                        MaterialButtonBuilder::new("").filled().build(theme),
                     ))
                     .with_children(|btn| {
                         btn.spawn((
                             ButtonLabel,
-                            Text::new(label),
+                            Text::new(""),
+                            LocalizedText::new("showcase.time_picker.open_button")
+                                .with_default("Open Time Picker"),
                             TextFont {
                                 font_size: 14.0,
                                 ..default()
@@ -65,7 +68,7 @@ pub fn spawn_time_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
 
                     row.spawn((
                         TimePickerResultDisplay(picker_entity),
-                        Text::new("Result: None"),
+                        Text::new(""),
                         TextFont {
                             font_size: 14.0,
                             ..default()

@@ -17,7 +17,9 @@ pub fn spawn_buttons_section(parent: &mut ChildSpawnerCommands, theme: &Material
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.buttons.title",
                 "Buttons",
+                "showcase.section.buttons.description",
                 "MD3 buttons with 5 variants: Filled, Outlined, Text, Elevated, and Tonal",
             );
 

@@ -10,6 +10,7 @@ use bevy::ecs::relationship::Relationship;
 
 use crate::{
     icons::{IconStyle, MaterialIcon},
+    i18n::LocalizedText,
     ripple::RippleHost,
     theme::MaterialTheme,
     tokens::{CornerRadius, Spacing},
@@ -334,6 +335,7 @@ pub const BOTTOM_APP_BAR_HEIGHT: f32 = 80.0;
 /// Builder for creating Top App Bars
 pub struct TopAppBarBuilder {
     app_bar: TopAppBar,
+    title_key: Option<String>,
 }
 
 impl TopAppBarBuilder {
@@ -341,7 +343,15 @@ impl TopAppBarBuilder {
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             app_bar: TopAppBar::new(title),
+            title_key: None,
         }
+    }
+
+    /// Set title from an i18n key.
+    pub fn title_key(mut self, key: impl Into<String>) -> Self {
+        self.app_bar.title = String::new();
+        self.title_key = Some(key.into());
+        self
     }
 
     /// Set small variant
@@ -550,22 +560,39 @@ impl SpawnAppBarChild for ChildSpawnerCommands<'_> {
         with_content: impl FnOnce(&mut ChildSpawnerCommands),
     ) {
         let title_text = builder.app_bar.title.clone();
+        let title_key = builder.title_key.clone();
         let title_color = builder.app_bar.title_color(theme);
 
         self.spawn(builder.build(theme)).with_children(|bar| {
             // Title
-            bar.spawn((
-                Text::new(&title_text),
-                TextFont {
-                    font_size: 22.0,
-                    ..default()
-                },
-                TextColor(title_color),
-                Node {
-                    flex_grow: 1.0,
-                    ..default()
-                },
-            ));
+            if let Some(key) = title_key.as_deref() {
+                bar.spawn((
+                    Text::new(""),
+                    LocalizedText::new(key),
+                    TextFont {
+                        font_size: 22.0,
+                        ..default()
+                    },
+                    TextColor(title_color),
+                    Node {
+                        flex_grow: 1.0,
+                        ..default()
+                    },
+                ));
+            } else {
+                bar.spawn((
+                    Text::new(&title_text),
+                    TextFont {
+                        font_size: 22.0,
+                        ..default()
+                    },
+                    TextColor(title_color),
+                    Node {
+                        flex_grow: 1.0,
+                        ..default()
+                    },
+                ));
+            }
 
             // Additional content
             with_content(bar);
@@ -598,6 +625,7 @@ impl SpawnTopAppBarWithRightContentChild for ChildSpawnerCommands<'_> {
         with_right_content: impl FnOnce(&mut ChildSpawnerCommands),
     ) -> Entity {
         let title = builder.app_bar.title.clone();
+        let title_key = builder.title_key.clone();
         let title_color = builder.app_bar.title_color(theme);
         let nav_icon = builder.app_bar.navigation_icon.clone();
         let actions = builder.app_bar.actions.clone();
@@ -645,34 +673,65 @@ impl SpawnTopAppBarWithRightContentChild for ChildSpawnerCommands<'_> {
 
                         // Title (for Small variant)
                         if variant == TopAppBarVariant::Small {
-                            left.spawn((
-                                AppBarTitle,
-                                Text::new(&title),
-                                TextFont {
-                                    font_size: 22.0,
-                                    ..default()
-                                },
-                                TextColor(title_color),
-                            ));
+                            if let Some(key) = title_key.as_deref() {
+                                left.spawn((
+                                    AppBarTitle,
+                                    Text::new(""),
+                                    LocalizedText::new(key),
+                                    TextFont {
+                                        font_size: 22.0,
+                                        ..default()
+                                    },
+                                    TextColor(title_color),
+                                ));
+                            } else {
+                                left.spawn((
+                                    AppBarTitle,
+                                    Text::new(&title),
+                                    TextFont {
+                                        font_size: 22.0,
+                                        ..default()
+                                    },
+                                    TextColor(title_color),
+                                ));
+                            }
                         }
                     });
 
                 // Center section (title for center-aligned)
                 if variant == TopAppBarVariant::CenterAligned {
-                    parent.spawn((
-                        AppBarTitle,
-                        Text::new(&title),
-                        TextFont {
-                            font_size: 22.0,
-                            ..default()
-                        },
-                        TextColor(title_color),
-                        Node {
-                            flex_grow: 1.0,
-                            justify_content: JustifyContent::Center,
-                            ..default()
-                        },
-                    ));
+                    if let Some(key) = title_key.as_deref() {
+                        parent.spawn((
+                            AppBarTitle,
+                            Text::new(""),
+                            LocalizedText::new(key),
+                            TextFont {
+                                font_size: 22.0,
+                                ..default()
+                            },
+                            TextColor(title_color),
+                            Node {
+                                flex_grow: 1.0,
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
+                        ));
+                    } else {
+                        parent.spawn((
+                            AppBarTitle,
+                            Text::new(&title),
+                            TextFont {
+                                font_size: 22.0,
+                                ..default()
+                            },
+                            TextColor(title_color),
+                            Node {
+                                flex_grow: 1.0,
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
+                        ));
+                    }
                 }
 
                 // Right section (custom content + actions)

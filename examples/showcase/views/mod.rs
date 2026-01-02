@@ -29,6 +29,7 @@ pub mod theme;
 pub mod time_picker;
 pub mod toolbar;
 pub mod tooltips;
+pub mod translations;
 
 pub use app_bar::*;
 pub use badges::*;
@@ -59,4 +60,5 @@ pub use theme::*;
 pub use time_picker::*;
 pub use toolbar::*;
 pub use tooltips::*;
+pub use translations::*;
 

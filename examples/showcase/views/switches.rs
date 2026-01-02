@@ -22,7 +22,9 @@ pub fn spawn_switches_section(parent: &mut ChildSpawnerCommands, theme: &Materia
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.switches.title",
                 "Switches",
+                "showcase.section.switches.description",
                 "Toggle on/off with sliding thumb animation",
             );
 

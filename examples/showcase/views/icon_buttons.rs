@@ -21,7 +21,9 @@ pub fn spawn_icon_buttons_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.icon_buttons.title",
                 "Icon Buttons",
+                "showcase.section.icon_buttons.description",
                 "Icon-only buttons for actions - Standard, Filled, Tonal, and Outlined variants",
             );
             section

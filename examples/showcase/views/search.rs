@@ -18,7 +18,9 @@ pub fn spawn_search_section(parent: &mut ChildSpawnerCommands, theme: &MaterialT
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.search.title",
                 "Search",
+                "showcase.section.search.description",
                 "Search bar for navigation and search functionality",
             );
 

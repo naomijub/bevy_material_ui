@@ -7,6 +7,7 @@ use bevy::ui::{ComputedNode, FocusPolicy, UiGlobalTransform};
 use std::f32::consts::PI;
 
 use crate::theme::MaterialTheme;
+use crate::i18n::{MaterialI18n, MaterialLanguage, MaterialLanguageOverride};
 use crate::icons::material_icon_names;
 use crate::tokens::{CornerRadius, Spacing};
 use crate::text_field::{spawn_text_field_control_with, InputType, MaterialTextField, TextFieldBuilder};
@@ -39,6 +40,7 @@ impl Plugin for TimePickerPlugin {
             .add_systems(
                 Update,
                 (
+                    time_picker_localization_system,
                     time_picker_visibility_system,
                     time_picker_keyboard_dismiss_system,
                     time_picker_mode_toggle_system,
@@ -53,6 +55,105 @@ impl Plugin for TimePickerPlugin {
                     time_picker_theme_system,
                 ),
             );
+    }
+}
+
+// ============================================================================
+// Localization
+// ============================================================================
+
+/// Optional i18n bindings for a `MaterialTimePicker`.
+#[derive(Component, Debug, Default, Clone, PartialEq, Eq)]
+pub struct TimePickerLocalization {
+    pub title_key: Option<String>,
+}
+
+impl TimePickerLocalization {
+    pub fn title_key(mut self, key: impl Into<String>) -> Self {
+        self.title_key = Some(key.into());
+        self
+    }
+}
+
+#[derive(Component, Debug, Clone)]
+struct TimePickerLocalizationState {
+    last_revision: u64,
+    last_language: String,
+}
+
+fn resolve_language_tag(
+    mut entity: Entity,
+    child_of: &Query<&ChildOf>,
+    overrides: &Query<&MaterialLanguageOverride>,
+    language: &MaterialLanguage,
+) -> String {
+    if let Ok(ov) = overrides.get(entity) {
+        return ov.tag.clone();
+    }
+
+    while let Ok(parent) = child_of.get(entity) {
+        entity = parent.parent();
+        if let Ok(ov) = overrides.get(entity) {
+            return ov.tag.clone();
+        }
+    }
+
+    language.tag.clone()
+}
+
+fn time_picker_localization_system(
+    mut commands: Commands,
+    i18n: Option<Res<MaterialI18n>>,
+    language: Option<Res<MaterialLanguage>>,
+    child_of: Query<&ChildOf>,
+    overrides: Query<&MaterialLanguageOverride>,
+    mut pickers: Query<
+        (
+            Entity,
+            &TimePickerLocalization,
+            &mut MaterialTimePicker,
+            Option<&mut TimePickerLocalizationState>,
+        ),
+        With<MaterialTimePicker>,
+    >,
+) {
+    let (Some(i18n), Some(language)) = (i18n, language) else {
+        return;
+    };
+
+    let global_revision = i18n.revision();
+
+    for (entity, loc, mut picker, state) in pickers.iter_mut() {
+        if loc.title_key.is_none() {
+            continue;
+        }
+
+        let resolved_language = resolve_language_tag(entity, &child_of, &overrides, &language);
+
+        let needs_update = match &state {
+            Some(s) => s.last_revision != global_revision || s.last_language != resolved_language,
+            None => true,
+        };
+
+        if !needs_update {
+            continue;
+        }
+
+        if let Some(key) = &loc.title_key {
+            if let Some(value) = i18n.translate(&resolved_language, key) {
+                picker.title = value.to_string();
+            }
+        }
+
+        if let Some(mut state) = state {
+            state.last_revision = global_revision;
+            state.last_language = resolved_language;
+        } else {
+            commands.entity(entity).insert(TimePickerLocalizationState {
+                last_revision: global_revision,
+                last_language: resolved_language,
+            });
+        }
     }
 }
 
@@ -121,6 +222,7 @@ pub struct MaterialTimePicker {
 #[derive(Debug, Clone)]
 pub struct TimePickerBuilder {
     title: String,
+    localization: TimePickerLocalization,
     input_mode: TimeInputMode,
     format: TimeFormat,
     initial_hour: u8,
@@ -140,6 +242,7 @@ impl TimePickerBuilder {
     pub fn new() -> Self {
         Self {
             title: "Select time".to_string(),
+            localization: TimePickerLocalization::default(),
             input_mode: TimeInputMode::Clock,
             format: TimeFormat::H24,
             initial_hour: 0,
@@ -152,6 +255,13 @@ impl TimePickerBuilder {
 
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
+        self
+    }
+
+    /// Set title from an i18n key.
+    pub fn title_key(mut self, key: impl Into<String>) -> Self {
+        self.title.clear();
+        self.localization = self.localization.title_key(key);
         self
     }
 
@@ -1076,6 +1186,7 @@ impl SpawnTimePicker for ChildSpawnerCommands<'_> {
         // Spawn root container
         let mut root = self.spawn((
             picker,
+            builder.localization,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),

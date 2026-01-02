@@ -22,7 +22,9 @@ pub fn spawn_layouts_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.layouts.title",
                 "Layouts",
+                "showcase.section.layouts.description",
                 "Canonical Material 3 scaffolds: bottom navigation, rail, modal drawer, list-detail, and supporting panes.",
             );
 

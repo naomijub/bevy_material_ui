@@ -954,6 +954,7 @@ dependencies = [
  "google-material-design-icons-bin",
  "hct-cam16",
  "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

@@ -23,7 +23,9 @@ pub fn spawn_snackbar_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.snackbar.title",
                 "Snackbars",
+                "showcase.section.snackbar.description",
                 "Brief messages about app processes - Configure options below",
             );
 

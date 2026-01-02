@@ -21,7 +21,9 @@ pub fn spawn_fab_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.fab.title",
                 "Floating Action Buttons",
+                "showcase.section.fab.description",
                 "Primary actions with prominent visual treatment",
             );
 

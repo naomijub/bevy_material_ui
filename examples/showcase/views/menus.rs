@@ -25,7 +25,9 @@ pub fn spawn_menus_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.menus.title",
                 "Menus",
+                "showcase.section.menus.description",
                 "Dropdown menus with selectable items",
             );
             // Menu trigger and dropdown container

@@ -17,7 +17,9 @@ pub fn spawn_progress_section(parent: &mut ChildSpawnerCommands, theme: &Materia
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.progress.title",
                 "Progress Indicators",
+                "showcase.section.progress.description",
                 "Visual feedback for loading and progress states",
             );
 

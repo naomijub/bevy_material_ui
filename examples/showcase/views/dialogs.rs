@@ -19,7 +19,9 @@ pub fn spawn_dialogs_section(parent: &mut ChildSpawnerCommands, theme: &Material
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.dialogs.title",
                 "Dialogs",
+                "showcase.section.dialogs.description",
                 "Modal windows with positioning options",
             );
 

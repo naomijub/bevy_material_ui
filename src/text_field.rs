@@ -7,10 +7,33 @@ use bevy::prelude::*;
 
 use crate::{
     icons::{icon_by_name, IconStyle, MaterialIcon, ICON_CLOSE},
+    i18n::{MaterialI18n, MaterialLanguage, MaterialLanguageOverride},
     ripple::RippleHost,
     theme::MaterialTheme,
     tokens::{CornerRadius, Spacing},
+    locale::{DateInputPattern, DateFieldOrder},
 };
+
+#[derive(Component, Debug, Default, Clone, PartialEq, Eq)]
+pub struct TextFieldLocalization {
+    pub label_key: Option<String>,
+    pub placeholder_key: Option<String>,
+    pub supporting_text_key: Option<String>,
+    pub error_text_key: Option<String>,
+}
+
+impl TextFieldLocalization {
+    fn is_empty(&self) -> bool {
+        self.label_key.is_none()
+            && self.placeholder_key.is_none()
+            && self.supporting_text_key.is_none()
+            && self.error_text_key.is_none()
+    }
+
+    fn needs_supporting_entity(&self) -> bool {
+        self.supporting_text_key.is_some() || self.error_text_key.is_some()
+    }
+}
 
 fn resolve_icon_id(icon: &str) -> Option<crate::icons::material_icons::IconId> {
     let icon = icon.trim();
@@ -42,6 +65,8 @@ impl Plugin for TextFieldPlugin {
                     text_field_focus_system,
                     text_field_end_icon_click_system,
                     text_field_input_system,
+                    text_field_formatter_system,
+                    text_field_localization_system,
                     text_field_caret_blink_system,
                     text_field_label_system,
                     text_field_placeholder_system,
@@ -52,6 +77,94 @@ impl Plugin for TextFieldPlugin {
                 )
                     .chain(),
             );
+    }
+}
+
+fn resolve_language_tag_for_entity(
+    mut entity: Entity,
+    child_of: &Query<&ChildOf>,
+    overrides: &Query<&MaterialLanguageOverride>,
+    global: &MaterialLanguage,
+) -> String {
+    if let Ok(ov) = overrides.get(entity) {
+        return ov.tag.clone();
+    }
+
+    while let Ok(parent) = child_of.get(entity) {
+        entity = parent.parent();
+        if let Ok(ov) = overrides.get(entity) {
+            return ov.tag.clone();
+        }
+    }
+
+    global.tag.clone()
+}
+
+fn text_field_localization_system(
+    i18n: Option<Res<MaterialI18n>>,
+    language: Option<Res<MaterialLanguage>>,
+    child_of: Query<&ChildOf>,
+    overrides: Query<&MaterialLanguageOverride>,
+    mut fields: ParamSet<(
+        Query<(Entity, &mut MaterialTextField, &TextFieldLocalization)>,
+        Query<
+            (Entity, &mut MaterialTextField, &TextFieldLocalization),
+            Or<(Added<TextFieldLocalization>, Changed<TextFieldLocalization>)>,
+        >,
+    )>,
+) {
+    let (Some(i18n), Some(language)) = (i18n, language) else {
+        return;
+    };
+
+    let global_changed = i18n.is_changed() || language.is_changed();
+
+    let apply = |entity: Entity,
+                     mut field: Mut<MaterialTextField>,
+                     loc: &TextFieldLocalization| {
+        if loc.is_empty() {
+            return;
+        }
+
+        let lang = resolve_language_tag_for_entity(entity, &child_of, &overrides, &language);
+
+        if let Some(key) = &loc.label_key {
+            let resolved = i18n.translate(&lang, key).unwrap_or(key.as_str());
+            if field.label.as_deref() != Some(resolved) {
+                field.label = Some(resolved.to_string());
+            }
+        }
+
+        if let Some(key) = &loc.placeholder_key {
+            let resolved = i18n.translate(&lang, key).unwrap_or(key.as_str());
+            if field.placeholder.as_str() != resolved {
+                field.placeholder = resolved.to_string();
+            }
+        }
+
+        if let Some(key) = &loc.supporting_text_key {
+            let resolved = i18n.translate(&lang, key).unwrap_or(key.as_str());
+            if field.supporting_text.as_deref() != Some(resolved) {
+                field.supporting_text = Some(resolved.to_string());
+            }
+        }
+
+        if let Some(key) = &loc.error_text_key {
+            let resolved = i18n.translate(&lang, key).unwrap_or(key.as_str());
+            if field.error_text.as_deref() != Some(resolved) {
+                field.error_text = Some(resolved.to_string());
+            }
+        }
+    };
+
+    if global_changed {
+        for (entity, field, loc) in fields.p0().iter_mut() {
+            apply(entity, field, loc);
+        }
+    } else {
+        for (entity, field, loc) in fields.p1().iter_mut() {
+            apply(entity, field, loc);
+        }
     }
 }
 
@@ -569,6 +682,126 @@ pub struct TextFieldSubmitEvent {
     pub value: String,
 }
 
+// ============================================================================
+// Formatters (Android-style "TextWatcher" idea)
+// ============================================================================
+
+/// Optional text formatting + validation behavior attached to a `MaterialTextField`.
+///
+/// This is modeled after Android's `TextWatcher` approach: as the user types,
+/// a formatter can normalize the value (e.g. auto-insert delimiters) and
+/// optionally surface format errors.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextFieldFormatter {
+    /// No formatting/validation.
+    #[default]
+    None,
+    /// Date format: `MM/DD/YYYY`.
+    DateMmDdYyyy,
+    /// Date format driven by a `DateInputPattern`.
+    DatePattern(DateInputPattern),
+}
+
+/// Tracks whether the current error state was set by the formatter.
+///
+/// This prevents the formatter system from clearing errors that were set by
+/// higher-level widgets (e.g. date picker out-of-range or invalid-range errors).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextFieldFormatState {
+    pub(crate) format_error: bool,
+}
+
+fn normalize_date_by_pattern(input: &str, pattern: DateInputPattern) -> String {
+    pattern.normalize_digits(input)
+}
+
+fn is_valid_complete_date_by_pattern(input: &str, pattern: DateInputPattern) -> bool {
+    // Keep this intentionally "basic" (format-level validation).
+    // Higher-level widgets (like date pickers) can do constraint validation.
+    pattern.is_valid_complete_basic(input)
+}
+
+/// Apply formatter normalization/format validation for fields that opt-in.
+///
+/// Runs immediately after `text_field_input_system` in the same chained stage.
+fn text_field_formatter_system(
+    mut fields: Query<(
+        &TextFieldFormatter,
+        &mut MaterialTextField,
+        &mut TextFieldFormatState,
+    )>,
+    mut change_events: MessageReader<TextFieldChangeEvent>,
+) {
+    for ev in change_events.read() {
+        let Ok((formatter, mut field, mut state)) = fields.get_mut(ev.entity) else {
+            continue;
+        };
+
+        match *formatter {
+            TextFieldFormatter::None => {}
+            TextFieldFormatter::DateMmDdYyyy => {
+                let pattern = DateInputPattern::new(DateFieldOrder::Mdy, '/');
+
+                // Normalize (auto-insert delimiters).
+                let normalized = normalize_date_by_pattern(&field.value, pattern);
+                if field.value != normalized {
+                    field.value = normalized;
+                }
+                field.has_content = !field.value.is_empty();
+
+                // Match Android: don't validate until complete.
+                if field.value.is_empty() || field.value.len() < pattern.formatted_len() {
+                    if state.format_error {
+                        field.error = false;
+                        field.error_text = None;
+                        state.format_error = false;
+                    }
+                    continue;
+                }
+
+                if !is_valid_complete_date_by_pattern(&field.value, pattern) {
+                    field.error = true;
+                    field.error_text = Some(format!("Invalid format. Use {}", pattern.hint()));
+                    state.format_error = true;
+                } else if state.format_error {
+                    // Only clear if we set the error.
+                    field.error = false;
+                    field.error_text = None;
+                    state.format_error = false;
+                }
+            }
+            TextFieldFormatter::DatePattern(pattern) => {
+                // Normalize (auto-insert delimiters).
+                let normalized = normalize_date_by_pattern(&field.value, pattern);
+                if field.value != normalized {
+                    field.value = normalized;
+                }
+                field.has_content = !field.value.is_empty();
+
+                // Match Android: don't validate until complete.
+                if field.value.is_empty() || field.value.len() < pattern.formatted_len() {
+                    if state.format_error {
+                        field.error = false;
+                        field.error_text = None;
+                        state.format_error = false;
+                    }
+                    continue;
+                }
+
+                if !is_valid_complete_date_by_pattern(&field.value, pattern) {
+                    field.error = true;
+                    field.error_text = Some(format!("Invalid format. Use {}", pattern.hint()));
+                    state.format_error = true;
+                } else if state.format_error {
+                    field.error = false;
+                    field.error_text = None;
+                    state.format_error = false;
+                }
+            }
+        }
+    }
+}
+
 /// Text field dimensions
 pub const TEXT_FIELD_HEIGHT: f32 = 56.0;
 pub const TEXT_FIELD_MIN_WIDTH: f32 = 210.0;
@@ -1048,6 +1281,8 @@ fn text_field_style_system(
 pub struct TextFieldBuilder {
     text_field: MaterialTextField,
     width: Val,
+    formatter: TextFieldFormatter,
+    localization: TextFieldLocalization,
 }
 
 impl TextFieldBuilder {
@@ -1056,7 +1291,28 @@ impl TextFieldBuilder {
         Self {
             text_field: MaterialTextField::new(),
             width: Val::Px(TEXT_FIELD_MIN_WIDTH),
+            formatter: TextFieldFormatter::None,
+            localization: TextFieldLocalization::default(),
         }
+    }
+
+    /// Attach a formatter to this text field.
+    pub fn formatter(mut self, formatter: TextFieldFormatter) -> Self {
+        self.formatter = formatter;
+        self
+    }
+
+    /// Convenience: set up a date field in `MM/DD/YYYY` format.
+    pub fn date_mm_dd_yyyy(self) -> Self {
+        self.date_pattern(DateInputPattern::new(DateFieldOrder::Mdy, '/'))
+    }
+
+    /// Convenience: set up a date field with a specific input pattern.
+    pub fn date_pattern(self, pattern: DateInputPattern) -> Self {
+        self.formatter(TextFieldFormatter::DatePattern(pattern))
+            .placeholder(pattern.hint())
+            .input_type(InputType::Number)
+            .max_length(pattern.formatted_len())
     }
 
     /// Set variant
@@ -1088,15 +1344,35 @@ impl TextFieldBuilder {
         self
     }
 
+    /// Set placeholder from i18n key.
+    pub fn placeholder_key(mut self, key: impl Into<String>) -> Self {
+        self.localization.placeholder_key = Some(key.into());
+        self
+    }
+
     /// Set label
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.text_field.label = Some(label.into());
         self
     }
 
+    /// Set label from i18n key.
+    pub fn label_key(mut self, key: impl Into<String>) -> Self {
+        self.text_field.label = Some(String::new());
+        self.localization.label_key = Some(key.into());
+        self
+    }
+
     /// Set supporting text
     pub fn supporting_text(mut self, text: impl Into<String>) -> Self {
         self.text_field.supporting_text = Some(text.into());
+        self
+    }
+
+    /// Set supporting text from i18n key.
+    pub fn supporting_text_key(mut self, key: impl Into<String>) -> Self {
+        self.text_field.supporting_text = Some(String::new());
+        self.localization.supporting_text_key = Some(key.into());
         self
     }
 
@@ -1152,6 +1428,14 @@ impl TextFieldBuilder {
         self
     }
 
+    /// Set error text from i18n key.
+    pub fn error_text_key(mut self, key: impl Into<String>) -> Self {
+        self.text_field.error_text = Some(String::new());
+        self.localization.error_text_key = Some(key.into());
+        self.text_field.error = true;
+        self
+    }
+
     /// Set max length
     pub fn max_length(mut self, max: usize) -> Self {
         self.text_field.max_length = Some(max);
@@ -1172,6 +1456,9 @@ impl TextFieldBuilder {
 
         (
             self.text_field,
+            self.formatter,
+            TextFieldFormatState::default(),
+            self.localization,
             Button,
             Interaction::None,
             Node {
@@ -1353,7 +1640,8 @@ impl SpawnTextFieldChild for ChildSpawnerCommands<'_> {
             )
         };
 
-        let should_spawn_supporting = !supporting_display.is_empty();
+        let should_spawn_supporting =
+            !supporting_display.is_empty() || builder.localization.needs_supporting_entity();
 
         // Wrapper so supporting/error text can appear below the 56px field.
         self.spawn(Node {
@@ -1614,7 +1902,8 @@ pub fn spawn_text_field_control(
         )
     };
 
-    let should_spawn_supporting = !supporting_display.is_empty();
+    let should_spawn_supporting =
+        !supporting_display.is_empty() || builder.localization.needs_supporting_entity();
 
     let mut spawned_field: Option<Entity> = None;
     parent
@@ -1874,7 +2163,8 @@ pub fn spawn_text_field_control_with<M: Component>(
         )
     };
 
-    let should_spawn_supporting = !supporting_display.is_empty();
+    let should_spawn_supporting =
+        !supporting_display.is_empty() || builder.localization.needs_supporting_entity();
 
     let mut spawned_field: Option<Entity> = None;
     parent

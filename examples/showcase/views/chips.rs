@@ -21,7 +21,9 @@ pub fn spawn_chips_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.chips.title",
                 "Chips",
+                "showcase.section.chips.description",
                 "Compact elements for filters, selections, and actions",
             );
 

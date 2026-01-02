@@ -182,36 +182,26 @@ fn ensure_scrollbars_system(
             }
         }
 
-        // Toggle visibility based on current container settings.
-        // NOTE: actual auto-hide based on overflow is handled by `update_scrollbars`.
-        // Here we only ensure that disabled scrollbars are hidden, and that enabled
-        // scrollbars start hidden unless `always_show_scrollbars` is set.
-        // We do this via commands so we don't require Visibility to already exist.
+        // Visibility policy:
+        // - If scrollbars are disabled for the container, force-hide existing tracks.
+        // - If `always_show_scrollbars` is enabled, force-show.
+        // - Otherwise, let `update_scrollbars` handle auto-hide based on overflow.
+        //
+        // IMPORTANT: this system runs in PostUpdate (before layout). If we set tracks to Hidden
+        // every frame here, we can override the visibility computed in `update_scrollbars`.
         for track in existing_tracks_v {
-            commands
-                .entity(track)
-                .insert(if wants_v {
-                    if container.always_show_scrollbars {
-                        Visibility::Inherited
-                    } else {
-                        Visibility::Hidden
-                    }
-                } else {
-                    Visibility::Hidden
-                });
+            if !wants_v {
+                commands.entity(track).insert(Visibility::Hidden);
+            } else if container.always_show_scrollbars {
+                commands.entity(track).insert(Visibility::Inherited);
+            }
         }
         for track in existing_tracks_h {
-            commands
-                .entity(track)
-                .insert(if wants_h {
-                    if container.always_show_scrollbars {
-                        Visibility::Inherited
-                    } else {
-                        Visibility::Hidden
-                    }
-                } else {
-                    Visibility::Hidden
-                });
+            if !wants_h {
+                commands.entity(track).insert(Visibility::Hidden);
+            } else if container.always_show_scrollbars {
+                commands.entity(track).insert(Visibility::Inherited);
+            }
         }
     }
 }
@@ -334,8 +324,17 @@ fn ensure_scroll_content_wrapper_system(
             0.0
         };
 
+        // IMPORTANT: For horizontal (or bi-directional) scrolling, the scroll content must be
+        // allowed to grow wider than the viewport, otherwise Bevy may report a `content_size.x`
+        // equal to the viewport width and the horizontal scrollbar will never appear.
+        let (content_width, content_min_width) = match container.direction {
+            ScrollDirection::Horizontal | ScrollDirection::Both => (Val::Auto, Val::Percent(100.0)),
+            ScrollDirection::Vertical => (Val::Percent(100.0), Val::Auto),
+        };
+
         let mut desired_content_node = Node {
-            width: Val::Percent(100.0),
+            width: content_width,
+            min_width: content_min_width,
             height: Val::Percent(100.0),
             // Important for scroll containers inside flex columns:
             // allow shrinking so overflow/scrolling can happen.
@@ -597,12 +596,14 @@ impl ScrollContainer {
 
     /// Check if scrolling is needed in x direction
     pub fn needs_scroll_x(&self) -> bool {
-        self.max_offset.x > 0.0 && matches!(self.direction, ScrollDirection::Horizontal | ScrollDirection::Both)
+        self.max_offset.x > OVERFLOW_EPSILON
+            && matches!(self.direction, ScrollDirection::Horizontal | ScrollDirection::Both)
     }
 
     /// Check if scrolling is needed in y direction
     pub fn needs_scroll_y(&self) -> bool {
-        self.max_offset.y > 0.0 && matches!(self.direction, ScrollDirection::Vertical | ScrollDirection::Both)
+        self.max_offset.y > OVERFLOW_EPSILON
+            && matches!(self.direction, ScrollDirection::Vertical | ScrollDirection::Both)
     }
 
     /// Get scrollbar thumb size for vertical scrollbar
@@ -673,6 +674,13 @@ pub struct ScrollbarDragging {
 
 /// Line height for scroll calculations
 const LINE_HEIGHT: f32 = 21.0;
+
+/// Minimum overflow (in logical px) required before we consider a scrollbar necessary.
+///
+/// During window resize/layout, computed sizes can fluctuate by sub-pixel amounts.
+/// Without a threshold, `max_offset` can bounce between tiny positive/zero values,
+/// causing scrollbars to briefly appear and then disappear.
+const OVERFLOW_EPSILON: f32 = 1.0;
 
 /// Thickness (in logical px) of the visual scrollbars spawned by `spawn_scrollbars`.
 /// Also used to reserve space in `ScrollContent` so scrollbars do not overlap content.
@@ -777,6 +785,14 @@ fn sync_scroll_state_system(
     mut containers: Query<(&mut ScrollContainer, &ScrollPosition, &ComputedNode, &Children)>,
     content_nodes: Query<(&ComputedNode, &Node, &ScrollPosition), With<ScrollContent>>,
 ) {
+    fn snap_overflow(v: f32) -> f32 {
+        if v <= OVERFLOW_EPSILON {
+            0.0
+        } else {
+            v
+        }
+    }
+
     for (mut container, scroll_pos, computed, children) in containers.iter_mut() {
         // The actual scrollable extents come from the internal ScrollContent node.
         // Fall back to the container node if the wrapper doesn't exist yet.
@@ -814,7 +830,12 @@ fn sync_scroll_state_system(
 
         container.container_size = viewport_size_phys * inv;
         container.content_size = content_size_phys * inv;
-        container.max_offset = (container.content_size - container.container_size).max(Vec2::ZERO);
+
+        let raw = container.content_size - container.container_size;
+        container.max_offset = Vec2::new(
+            snap_overflow(raw.x.max(0.0)),
+            snap_overflow(raw.y.max(0.0)),
+        );
 
         // Sync offset from Bevy's ScrollPosition (logical pixels)
         container.offset = **scroll_pos;
@@ -1069,19 +1090,27 @@ fn scrollbar_thumb_drag_system(
 /// System to update scrollbar visuals
 fn update_scrollbars(
     containers: Query<(&ScrollContainer, &ScrollPosition, &Children)>,
-    track_v_nodes: Query<&ComputedNode, With<ScrollbarTrackVertical>>,
-    track_h_nodes: Query<&ComputedNode, With<ScrollbarTrackHorizontal>>,
-    mut thumb_v: Query<&mut Node, (With<ScrollbarThumbVertical>, Without<ScrollbarThumbHorizontal>)>,
-    mut thumb_h: Query<&mut Node, (With<ScrollbarThumbHorizontal>, Without<ScrollbarThumbVertical>)>,
-    mut track_v_vis: Query<&mut Visibility, (With<ScrollbarTrackVertical>, Without<ScrollbarTrackHorizontal>)>,
-    mut track_h_vis: Query<&mut Visibility, (With<ScrollbarTrackHorizontal>, Without<ScrollbarTrackVertical>)>,
-    children_query: Query<&Children>,
+    mut queries: ParamSet<(
+        Query<&ComputedNode, With<ScrollbarTrackVertical>>,
+        Query<&ComputedNode, With<ScrollbarTrackHorizontal>>,
+        Query<&mut Node, (With<ScrollbarThumbVertical>, Without<ScrollbarThumbHorizontal>)>,
+        Query<&mut Node, (With<ScrollbarThumbHorizontal>, Without<ScrollbarThumbVertical>)>,
+        Query<
+            &mut Visibility,
+            (With<ScrollbarTrackVertical>, Without<ScrollbarTrackHorizontal>),
+        >,
+        Query<
+            &mut Visibility,
+            (With<ScrollbarTrackHorizontal>, Without<ScrollbarTrackVertical>),
+        >,
+        Query<&Children>,
+    )>,
 ) {
     for (container, scroll_pos, children) in containers.iter() {
         // Find scrollbar elements in children
         for child in children.iter() {
             // Check for vertical track
-            if let Ok(mut vis) = track_v_vis.get_mut(child) {
+            if let Ok(mut vis) = queries.p4().get_mut(child) {
                 *vis = if container.show_scrollbars
                     && matches!(container.direction, ScrollDirection::Vertical | ScrollDirection::Both)
                     && (container.always_show_scrollbars || container.needs_scroll_y())
@@ -1093,7 +1122,7 @@ fn update_scrollbars(
             }
             
             // Check for horizontal track
-            if let Ok(mut vis) = track_h_vis.get_mut(child) {
+            if let Ok(mut vis) = queries.p5().get_mut(child) {
                 *vis = if container.show_scrollbars
                     && matches!(container.direction, ScrollDirection::Horizontal | ScrollDirection::Both)
                     && (container.always_show_scrollbars || container.needs_scroll_x())
@@ -1105,12 +1134,21 @@ fn update_scrollbars(
             }
 
             // Look for thumbs in track children
-            if let Ok(track_children) = children_query.get(child) {
-                for track_child in track_children.iter() {
+            let track_children: Option<Vec<Entity>> = queries
+                .p6()
+                .get(child)
+                .ok()
+                .map(|c| c.iter().collect::<Vec<_>>());
+            if let Some(track_children) = track_children {
+                for track_child in track_children {
                     // Update vertical thumb - get track height from track's ComputedNode
-                    if let Ok(mut node) = thumb_v.get_mut(track_child) {
-                        if let Ok(track_computed) = track_v_nodes.get(child) {
-                            let track_height = track_computed.size().y * track_computed.inverse_scale_factor();
+                    let track_height = queries
+                        .p0()
+                        .get(child)
+                        .ok()
+                        .map(|t| t.size().y * t.inverse_scale_factor());
+                    if let Some(track_height) = track_height {
+                        if let Ok(mut node) = queries.p2().get_mut(track_child) {
                             let thumb_size = container
                                 .vertical_thumb_size()
                                 .max(30.0)
@@ -1147,9 +1185,13 @@ fn update_scrollbars(
                     }
                     
                     // Update horizontal thumb - get track width from track's ComputedNode
-                    if let Ok(mut node) = thumb_h.get_mut(track_child) {
-                        if let Ok(track_computed) = track_h_nodes.get(child) {
-                            let track_width = track_computed.size().x * track_computed.inverse_scale_factor();
+                    let track_width = queries
+                        .p1()
+                        .get(child)
+                        .ok()
+                        .map(|t| t.size().x * t.inverse_scale_factor());
+                    if let Some(track_width) = track_width {
+                        if let Ok(mut node) = queries.p3().get_mut(track_child) {
                             let thumb_size = container
                                 .horizontal_thumb_size()
                                 .max(30.0)

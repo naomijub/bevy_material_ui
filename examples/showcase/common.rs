@@ -1,6 +1,7 @@
 //! Common types, resources, and helper functions shared across the showcase application.
 
 use bevy::prelude::*;
+use bevy::text::{Justify, LineBreak, TextLayout};
 use bevy_material_ui::prelude::*;
 use bevy_material_ui::theme::ThemeMode;
 use std::collections::HashMap;
@@ -109,9 +110,46 @@ pub enum ComponentSection {
     LoadingIndicator,
     Search,
     ThemeColors,
+    Translations,
 }
 
 impl ComponentSection {
+    /// Localization key for the section label.
+    pub fn i18n_key(&self) -> &'static str {
+        match self {
+            Self::Buttons => "showcase.nav.buttons",
+            Self::Checkboxes => "showcase.nav.checkboxes",
+            Self::Switches => "showcase.nav.switches",
+            Self::RadioButtons => "showcase.nav.radio_buttons",
+            Self::Chips => "showcase.nav.chips",
+            Self::Fab => "showcase.nav.fab",
+            Self::Badges => "showcase.nav.badges",
+            Self::Progress => "showcase.nav.progress",
+            Self::Cards => "showcase.nav.cards",
+            Self::Dividers => "showcase.nav.dividers",
+            Self::Lists => "showcase.nav.lists",
+            Self::Icons => "showcase.nav.icons",
+            Self::IconButtons => "showcase.nav.icon_buttons",
+            Self::Sliders => "showcase.nav.sliders",
+            Self::TextFields => "showcase.nav.text_fields",
+            Self::Dialogs => "showcase.nav.dialogs",
+            Self::DatePicker => "showcase.nav.date_picker",
+            Self::TimePicker => "showcase.nav.time_picker",
+            Self::Menus => "showcase.nav.menus",
+            Self::Tabs => "showcase.nav.tabs",
+            Self::Select => "showcase.nav.select",
+            Self::Snackbar => "showcase.nav.snackbar",
+            Self::Tooltips => "showcase.nav.tooltips",
+            Self::AppBar => "showcase.nav.app_bar",
+            Self::Toolbar => "showcase.nav.toolbar",
+            Self::Layouts => "showcase.nav.layouts",
+            Self::LoadingIndicator => "showcase.nav.loading_indicator",
+            Self::Search => "showcase.nav.search",
+            Self::ThemeColors => "showcase.nav.theme_colors",
+            Self::Translations => "showcase.nav.translations",
+        }
+    }
+
     /// Get display name for the component
     pub fn display_name(&self) -> &'static str {
         match self {
@@ -144,6 +182,7 @@ impl ComponentSection {
             Self::LoadingIndicator => "Loading Indicator",
             Self::Search => "Search",
             Self::ThemeColors => "Theme Colors",
+            Self::Translations => "Translations",
         }
     }
 
@@ -181,6 +220,7 @@ impl ComponentSection {
             Self::LoadingIndicator => "LoadingIndicator",
             Self::Search => "Search",
             Self::ThemeColors => "ThemeColors",
+            Self::Translations => "Translations",
         }
     }
 
@@ -216,6 +256,7 @@ impl ComponentSection {
             Self::LoadingIndicator,
             Self::Search,
             Self::ThemeColors,
+            Self::Translations,
         ]
     }
 }
@@ -438,6 +479,7 @@ pub fn spawn_code_block(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme
     parent
         .spawn((
             Node {
+                width: Val::Percent(100.0),
                 padding: UiRect::all(Val::Px(16.0)),
                 margin: UiRect::top(Val::Px(8.0)),
                 ..default()
@@ -453,6 +495,14 @@ pub fn spawn_code_block(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme
                     ..default()
                 },
                 TextColor(theme.on_surface.with_alpha(0.87)),
+                // Prevent long lines from forcing the whole page to be wider than the viewport.
+                // This keeps the *page* horizontal scrollbar from appearing unless some other
+                // component truly overflows horizontally.
+                TextLayout::new(Justify::Left, LineBreak::WordOrCharacter),
+                Node {
+                    width: Val::Percent(100.0),
+                    ..default()
+                },
             ));
         });
 }
@@ -461,11 +511,14 @@ pub fn spawn_code_block(parent: &mut ChildSpawnerCommands, theme: &MaterialTheme
 pub fn spawn_section_header(
     parent: &mut ChildSpawnerCommands,
     theme: &MaterialTheme,
-    title: &str,
-    description: &str,
+    title_key: &str,
+    title_default: &str,
+    description_key: &str,
+    description_default: &str,
 ) {
     parent.spawn((
-        Text::new(title),
+        Text::new(""),
+        LocalizedText::new(title_key).with_default(title_default),
         TextFont {
             font_size: 22.0,
             ..default()
@@ -473,9 +526,10 @@ pub fn spawn_section_header(
         TextColor(theme.primary),
     ));
 
-    if !description.is_empty() {
+    if !description_default.is_empty() {
         parent.spawn((
-            Text::new(description),
+            Text::new(""),
+            LocalizedText::new(description_key).with_default(description_default),
             TextFont {
                 font_size: 14.0,
                 ..default()

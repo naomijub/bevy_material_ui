@@ -23,7 +23,9 @@ pub fn spawn_icons_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.icons.title",
                 "Material Icons",
+                "showcase.section.icons.description",
                 "Embedded Material icons",
             );
 

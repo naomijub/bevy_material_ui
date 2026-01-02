@@ -17,7 +17,9 @@ pub fn spawn_dividers_section(parent: &mut ChildSpawnerCommands, theme: &Materia
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.dividers.title",
                 "Dividers",
+                "showcase.section.dividers.description",
                 "Visual separators between content sections",
             );
 

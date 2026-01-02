@@ -26,15 +26,12 @@ pub fn spawn_nav_item(
     is_selected: bool,
 ) {
     // Create list item with proper selected state
-    let item = MaterialListItem::new(section.display_name()).selected(is_selected);
+    let item = MaterialListItem::new("").selected(is_selected);
     let text_color = item.headline_color(theme);
     let bg_color = item.background_color(theme);
 
     // Create test ID from section name (e.g., "nav_buttons", "nav_sliders")
-    let test_id = format!(
-        "nav_{}",
-        section.display_name().to_lowercase().replace(" ", "_")
-    );
+    let test_id = format!("nav_{}", section.telemetry_name().to_lowercase());
 
     // Spawn with MaterialListItem + NavItem marker + TestId
     parent
@@ -58,7 +55,8 @@ pub fn spawn_nav_item(
             // Item content - headline text with ListItemHeadline marker for automatic color updates
             item_container.spawn((
                 ListItemHeadline,
-                Text::new(section.display_name()),
+                Text::new(""),
+                LocalizedText::new(section.i18n_key()).with_default(section.display_name()),
                 TextFont {
                     font_size: 14.0,
                     ..default()

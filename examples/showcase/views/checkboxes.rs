@@ -26,7 +26,9 @@ pub fn spawn_checkboxes_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.checkboxes.title",
                 "Checkboxes",
+                "showcase.section.checkboxes.description",
                 "Toggle selection with visual checkmark feedback",
             );
 

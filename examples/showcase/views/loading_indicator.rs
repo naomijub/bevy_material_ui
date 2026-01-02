@@ -24,7 +24,9 @@ pub fn spawn_loading_indicator_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.loading_indicator.title",
                 "Loading Indicator",
+                "showcase.section.loading_indicator.description",
                 "Material Design 3 loading indicators with morphing shapes",
             );
 

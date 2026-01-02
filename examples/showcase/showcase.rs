@@ -12,6 +12,7 @@ pub mod tab_state;
 
 use bevy::asset::{AssetPlugin, RenderAssetUsages};
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy::input::{keyboard::KeyCode, ButtonInput};
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::ui::{ComputedNode, OverflowAxis, ScrollPosition, UiGlobalTransform, UiSystems};
@@ -19,6 +20,8 @@ use bevy::window::{PresentMode, PrimaryWindow};
 use bevy_material_ui::prelude::*;
 use bevy_material_ui::text_field::InputType;
 use bevy_material_ui::theme::ThemeMode;
+use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 
 use common::*;
@@ -69,6 +72,12 @@ struct PresentModeSettings {
 }
 
 #[derive(Resource)]
+struct ShowcaseI18nAssets {
+    #[allow(dead_code)]
+    handles: Vec<Handle<MaterialTranslations>>,
+}
+
+#[derive(Resource)]
 struct SettingsUiEntities {
     dialog: Entity,
     vsync_switch: Entity,
@@ -104,6 +113,7 @@ pub fn run() {
         .add_plugins(
             DefaultPlugins.set(AssetPlugin {
                 file_path: asset_root.to_string_lossy().to_string(),
+                watch_for_changes_override: Some(true),
                 ..default()
             }),
         )
@@ -122,12 +132,16 @@ pub fn run() {
         .init_resource::<ListDemoOptions>()
         .init_resource::<DialogDemoOptions>()
         .init_resource::<PresentModeSettings>()
+        .add_systems(Startup, load_showcase_i18n_assets_system)
+        .init_resource::<TranslationsDemoState>()
+        .init_resource::<TranslationsDemoAssets>()
         .init_resource::<TabStateCache>()
         .init_resource::<ThemeRebuildGate>()
         .add_systems(Startup, (setup_3d_scene, setup_ui, setup_telemetry))
         .add_systems(
             Update,
             (
+                toggle_language_system,
                 rotate_dice,
                 handle_nav_clicks,
                 update_nav_highlights,
@@ -138,6 +152,11 @@ pub fn run() {
                 snackbar_demo_trigger_system,
                 snackbar_demo_style_system,
                 snackbar_demo_action_log_system,
+            ),
+        )
+        .add_systems(
+            Update,
+            (
                 tooltip_demo_options_system,
                 tooltip_demo_apply_system,
                 tooltip_demo_style_system,
@@ -152,6 +171,17 @@ pub fn run() {
         )
         .add_systems(Update, (sidebar_scroll_telemetry_system, main_scroll_telemetry_system))
         .add_systems(Update, email_validation_system)
+        .add_systems(
+            Update,
+            (
+                translations_rescan_files_system,
+                translations_populate_select_options_system,
+                translations_validate_new_filename_system,
+                translations_select_change_system,
+                translations_create_file_system,
+                translations_save_file_system,
+            ),
+        )
         .add_systems(
             Update,
             (
@@ -187,9 +217,534 @@ pub fn run() {
         .run();
 }
 
+// ============================================================================
+// Translations (i18n) showcase workflow
+// ============================================================================
+
+const TRANSLATIONS_SELECT_LABEL_KEY: &str = "showcase.translations.language_file";
+const TRANSLATION_KEY_EMAIL_LABEL: &str = "showcase.text_fields.email.label";
+const TRANSLATION_KEY_EMAIL_PLACEHOLDER: &str = "showcase.text_fields.email.placeholder";
+const TRANSLATION_KEY_EMAIL_SUPPORTING: &str = "showcase.text_fields.email.supporting";
+
+#[derive(Debug, Clone)]
+struct TranslationFileEntry {
+    asset_path: String,
+    file_name: String,
+    language_tag: String,
+}
+
+#[derive(Resource, Default)]
+struct TranslationsDemoState {
+    entries: Vec<TranslationFileEntry>,
+    selected_asset_path: Option<String>,
+    needs_rescan: bool,
+}
+
+#[derive(Resource, Default)]
+struct TranslationsDemoAssets {
+    handles_by_path: HashMap<String, Handle<MaterialTranslations>>,
+}
+
+fn translations_assets_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("assets")
+        .join("i18n")
+}
+
+fn parse_translation_file_language(path: &std::path::Path) -> Option<String> {
+    let bytes = fs::read(path).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    json.get("language")?.as_str().map(|s| s.to_string())
+}
+
+fn parse_translation_file_strings(path: &std::path::Path) -> Option<HashMap<String, String>> {
+    let bytes = fs::read(path).ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+    let strings = json.get("strings")?.as_object()?;
+    let mut out = HashMap::with_capacity(strings.len());
+    for (k, v) in strings {
+        if let Some(s) = v.as_str() {
+            out.insert(k.clone(), s.to_string());
+        }
+    }
+    Some(out)
+}
+
+fn translations_rescan_files_system(
+    mut state: ResMut<TranslationsDemoState>,
+    time: Res<Time>,
+    mut timer: Local<Timer>,
+) {
+    if timer.duration().is_zero() {
+        *timer = Timer::from_seconds(1.0, TimerMode::Repeating);
+    }
+
+    // Only scan on a slow cadence unless we just created/saved a file.
+    let should_scan = state.needs_rescan || timer.tick(time.delta()).just_finished();
+    if !should_scan {
+        return;
+    }
+    state.needs_rescan = false;
+
+    let dir = translations_assets_dir();
+    let Ok(read_dir) = fs::read_dir(&dir) else {
+        state.entries.clear();
+        return;
+    };
+
+    let mut entries = Vec::new();
+    for item in read_dir.flatten() {
+        let path = item.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("mui_lang") {
+            continue;
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_string();
+
+        let Some(language_tag) = parse_translation_file_language(&path) else {
+            continue;
+        };
+
+        // Asset paths are relative to the asset root.
+        let asset_path = format!("i18n/{file_name}");
+        entries.push(TranslationFileEntry {
+            asset_path,
+            file_name,
+            language_tag,
+        });
+    }
+
+    entries.sort_by(|a, b| a.file_name.cmp(&b.file_name));
+    state.entries = entries;
+}
+
+fn translations_populate_select_options_system(
+    state: Res<TranslationsDemoState>,
+    mut assets: ResMut<TranslationsDemoAssets>,
+    asset_server: Res<AssetServer>,
+    mut selects: Query<(
+        &mut MaterialSelect,
+        &bevy_material_ui::select::SelectLocalization,
+    )>,
+) {
+    // Keep handles alive so the i18n ingest system sees newly created files.
+    for entry in state.entries.iter() {
+        if assets.handles_by_path.contains_key(&entry.asset_path) {
+            continue;
+        }
+        let handle = asset_server.load::<MaterialTranslations>(entry.asset_path.clone());
+        assets.handles_by_path.insert(entry.asset_path.clone(), handle);
+    }
+
+    let Some((mut select, _loc)) = selects
+        .iter_mut()
+        .find(|(_, loc)| loc.label_key.as_deref() == Some(TRANSLATIONS_SELECT_LABEL_KEY))
+    else {
+        return;
+    };
+
+    let mut options = Vec::with_capacity(state.entries.len());
+    for entry in state.entries.iter() {
+        options.push(
+            SelectOption::new(entry.file_name.clone()).value(entry.asset_path.clone()),
+        );
+    }
+
+    select.options = options;
+
+    // Keep selection stable.
+    if let Some(selected) = state.selected_asset_path.as_deref() {
+        if let Some(idx) = select
+            .options
+            .iter()
+            .position(|o| o.value.as_deref() == Some(selected))
+        {
+            select.selected_index = Some(idx);
+        }
+    }
+}
+
+fn is_snake_case_file_stem(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_lowercase() {
+        return false;
+    }
+    for c in chars {
+        if !(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+            return false;
+        }
+    }
+    true
+}
+
+fn translations_validate_new_filename_system(
+    state: Res<TranslationsDemoState>,
+    mut name_fields: Query<&mut MaterialTextField, With<views::TranslationsNewFileNameField>>,
+    mut create_buttons: Query<
+        &mut MaterialButton,
+        (
+            With<views::TranslationsCreateFileButton>,
+            Without<views::TranslationsSaveFileButton>,
+        ),
+    >,
+    mut save_buttons: Query<
+        &mut MaterialButton,
+        (
+            With<views::TranslationsSaveFileButton>,
+            Without<views::TranslationsCreateFileButton>,
+        ),
+    >,
+) {
+    let Some(mut field) = name_fields.iter_mut().next() else {
+        return;
+    };
+    let Some(mut button) = create_buttons.iter_mut().next() else {
+        return;
+    };
+    let mut save_button = save_buttons.iter_mut().next();
+
+    let raw = field.value.trim();
+    if raw.is_empty() {
+        field.error = false;
+        field.error_text = None;
+        button.disabled = true;
+
+        // Allow saving the currently selected file when the new filename input is empty.
+        if let Some(save_button) = save_button.as_mut() {
+            save_button.disabled = state.selected_asset_path.is_none();
+        }
+        return;
+    }
+
+    let Some(stem) = raw.strip_suffix(".mui_lang") else {
+        field.error = true;
+        field.error_text = Some("Translation files must end with .mui_lang.".to_string());
+        button.disabled = true;
+
+        if let Some(save_button) = save_button.as_mut() {
+            save_button.disabled = true;
+        }
+        return;
+    };
+
+    let valid = is_snake_case_file_stem(stem);
+    if !valid {
+        field.error = true;
+        field.error_text = Some("Snake case must be used for translation files.".to_string());
+        button.disabled = true;
+
+        if let Some(save_button) = save_button.as_mut() {
+            save_button.disabled = true;
+        }
+        return;
+    }
+
+    let file_name = raw;
+    let target = translations_assets_dir().join(file_name);
+    if target.exists() {
+        field.error = true;
+        field.error_text = Some("Snake case must be used for translation files.".to_string());
+        button.disabled = true;
+
+        if let Some(save_button) = save_button.as_mut() {
+            save_button.disabled = true;
+        }
+        return;
+    }
+
+    field.error = false;
+    field.error_text = None;
+    button.disabled = false;
+
+    if let Some(save_button) = save_button.as_mut() {
+        save_button.disabled = state.selected_asset_path.is_none();
+    }
+}
+
+fn translations_select_change_system(
+    mut change_events: MessageReader<SelectChangeEvent>,
+    selects: Query<(
+        &MaterialSelect,
+        &bevy_material_ui::select::SelectLocalization,
+    )>,
+    mut state: ResMut<TranslationsDemoState>,
+    mut language: ResMut<MaterialLanguage>,
+    mut editor_fields: ParamSet<(
+        Query<&mut MaterialTextField, With<views::TranslationKeyFieldLabel>>,
+        Query<&mut MaterialTextField, With<views::TranslationKeyFieldPlaceholder>>,
+        Query<&mut MaterialTextField, With<views::TranslationKeyFieldSupporting>>,
+    )>,
+) {
+    for ev in change_events.read() {
+        let Ok((_select, loc)) = selects.get(ev.entity) else {
+            continue;
+        };
+        if loc.label_key.as_deref() != Some(TRANSLATIONS_SELECT_LABEL_KEY) {
+            continue;
+        }
+
+        let Some(asset_path) = ev.option.value.clone() else {
+            continue;
+        };
+
+        state.selected_asset_path = Some(asset_path.clone());
+
+        // Update language tag to match the file’s declared language.
+        if let Some(entry) = state
+            .entries
+            .iter()
+            .find(|e| e.asset_path == asset_path)
+        {
+            language.tag = entry.language_tag.clone();
+        }
+
+        // Hydrate editor fields from disk so edits map 1:1 to file content.
+        let disk_path = translations_assets_dir().join(
+            asset_path
+                .strip_prefix("i18n/")
+                .unwrap_or(asset_path.as_str()),
+        );
+        if let Some(strings) = parse_translation_file_strings(&disk_path) {
+            if let Some(mut f) = editor_fields.p0().iter_mut().next() {
+                if !f.focused {
+                    f.value = strings
+                        .get(TRANSLATION_KEY_EMAIL_LABEL)
+                        .cloned()
+                        .unwrap_or_default();
+                    f.has_content = !f.value.is_empty();
+                }
+            }
+            if let Some(mut f) = editor_fields.p1().iter_mut().next() {
+                if !f.focused {
+                    f.value = strings
+                        .get(TRANSLATION_KEY_EMAIL_PLACEHOLDER)
+                        .cloned()
+                        .unwrap_or_default();
+                    f.has_content = !f.value.is_empty();
+                }
+            }
+            if let Some(mut f) = editor_fields.p2().iter_mut().next() {
+                if !f.focused {
+                    f.value = strings
+                        .get(TRANSLATION_KEY_EMAIL_SUPPORTING)
+                        .cloned()
+                        .unwrap_or_default();
+                    f.has_content = !f.value.is_empty();
+                }
+            }
+        }
+    }
+}
+
+fn translations_create_file_system(
+    mut click_events: MessageReader<ButtonClickEvent>,
+    create_buttons: Query<(), With<views::TranslationsCreateFileButton>>,
+    name_fields: Query<&MaterialTextField, With<views::TranslationsNewFileNameField>>,
+    mut editor_fields: ParamSet<(
+        Query<&MaterialTextField, With<views::TranslationKeyFieldLabel>>,
+        Query<&MaterialTextField, With<views::TranslationKeyFieldPlaceholder>>,
+        Query<&MaterialTextField, With<views::TranslationKeyFieldSupporting>>,
+    )>,
+    mut state: ResMut<TranslationsDemoState>,
+    mut language: ResMut<MaterialLanguage>,
+    mut i18n: Option<ResMut<MaterialI18n>>,
+) {
+    for ev in click_events.read() {
+        if create_buttons.get(ev.entity).is_err() {
+            continue;
+        }
+
+        let Some(name_field) = name_fields.iter().next() else {
+            continue;
+        };
+        let file_name = name_field.value.trim();
+        let Some(stem) = file_name.strip_suffix(".mui_lang") else {
+            continue;
+        };
+        if !is_snake_case_file_stem(stem) {
+            continue;
+        }
+        let dir = translations_assets_dir();
+        let path = dir.join(&file_name);
+        if path.exists() {
+            continue;
+        }
+
+        let Some(label_value) = ({
+            editor_fields.p0().iter().next().map(|f| f.value.clone())
+        }) else {
+            continue;
+        };
+        let Some(placeholder_value) = ({
+            editor_fields.p1().iter().next().map(|f| f.value.clone())
+        }) else {
+            continue;
+        };
+        let Some(supporting_value) = ({
+            editor_fields.p2().iter().next().map(|f| f.value.clone())
+        }) else {
+            continue;
+        };
+
+        let mut strings_map = HashMap::new();
+        strings_map.insert(TRANSLATION_KEY_EMAIL_LABEL.to_string(), label_value);
+        strings_map.insert(
+            TRANSLATION_KEY_EMAIL_PLACEHOLDER.to_string(),
+            placeholder_value,
+        );
+        strings_map.insert(
+            TRANSLATION_KEY_EMAIL_SUPPORTING.to_string(),
+            supporting_value,
+        );
+
+        if let Some(i18n) = i18n.as_deref_mut() {
+            // Immediately apply without relying on file watching.
+            i18n.insert_bundle(stem.to_string(), strings_map.clone());
+        }
+
+        let mut strings = serde_json::Map::new();
+        for (k, v) in strings_map.iter() {
+            strings.insert(k.clone(), serde_json::Value::String(v.clone()));
+        }
+
+        let json = serde_json::json!({
+            "language": stem,
+            "strings": strings,
+        });
+
+        let _ = fs::create_dir_all(&dir);
+        if fs::write(&path, serde_json::to_vec_pretty(&json).unwrap_or_default()).is_ok() {
+            state.needs_rescan = true;
+            state.selected_asset_path = Some(format!("i18n/{file_name}"));
+            language.tag = stem.to_string();
+        }
+    }
+}
+
+fn translations_save_file_system(
+    mut click_events: MessageReader<ButtonClickEvent>,
+    save_buttons: Query<(), With<views::TranslationsSaveFileButton>>,
+    mut editor_fields: ParamSet<(
+        Query<&MaterialTextField, With<views::TranslationKeyFieldLabel>>,
+        Query<&MaterialTextField, With<views::TranslationKeyFieldPlaceholder>>,
+        Query<&MaterialTextField, With<views::TranslationKeyFieldSupporting>>,
+    )>,
+    mut state: ResMut<TranslationsDemoState>,
+    mut i18n: Option<ResMut<MaterialI18n>>,
+) {
+    for ev in click_events.read() {
+        if save_buttons.get(ev.entity).is_err() {
+            continue;
+        }
+
+        let Some(asset_path) = state.selected_asset_path.clone() else {
+            continue;
+        };
+
+        let disk_path = translations_assets_dir().join(
+            asset_path
+                .strip_prefix("i18n/")
+                .unwrap_or(asset_path.as_str()),
+        );
+
+        let mut strings = parse_translation_file_strings(&disk_path).unwrap_or_default();
+
+        let Some(label_value) = ({
+            editor_fields.p0().iter().next().map(|f| f.value.clone())
+        }) else {
+            continue;
+        };
+        let Some(placeholder_value) = ({
+            editor_fields.p1().iter().next().map(|f| f.value.clone())
+        }) else {
+            continue;
+        };
+        let Some(supporting_value) = ({
+            editor_fields.p2().iter().next().map(|f| f.value.clone())
+        }) else {
+            continue;
+        };
+
+        strings.insert(TRANSLATION_KEY_EMAIL_LABEL.to_string(), label_value);
+        strings.insert(
+            TRANSLATION_KEY_EMAIL_PLACEHOLDER.to_string(),
+            placeholder_value,
+        );
+        strings.insert(
+            TRANSLATION_KEY_EMAIL_SUPPORTING.to_string(),
+            supporting_value,
+        );
+
+        let language_tag = parse_translation_file_language(&disk_path)
+            .or_else(|| {
+                disk_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "en-US".to_string());
+
+        let json = serde_json::json!({
+            "language": language_tag,
+            "strings": strings,
+        });
+
+        if fs::write(&disk_path, serde_json::to_vec_pretty(&json).unwrap_or_default()).is_ok() {
+            if let Some(i18n) = i18n.as_deref_mut() {
+                // Immediately apply without relying on file watching.
+                let Some(strings) = parse_translation_file_strings(&disk_path) else {
+                    state.needs_rescan = true;
+                    continue;
+                };
+                let language_tag = parse_translation_file_language(&disk_path)
+                    .unwrap_or_else(|| "en-US".to_string());
+                i18n.insert_bundle(language_tag, strings);
+            }
+            state.needs_rescan = true;
+        }
+    }
+}
+
+fn load_showcase_i18n_assets_system(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let handles = vec![
+        asset_server.load::<MaterialTranslations>("i18n/en-US.mui_lang"),
+        asset_server.load::<MaterialTranslations>("i18n/es-ES.mui_lang"),
+        asset_server.load::<MaterialTranslations>("i18n/fr-FR.mui_lang"),
+        asset_server.load::<MaterialTranslations>("i18n/de-DE.mui_lang"),
+        asset_server.load::<MaterialTranslations>("i18n/ja-JP.mui_lang"),
+        asset_server.load::<MaterialTranslations>("i18n/zh-CN.mui_lang"),
+        asset_server.load::<MaterialTranslations>("i18n/he-IL.mui_lang"),
+    ];
+
+    commands.insert_resource(ShowcaseI18nAssets { handles });
+}
+
+fn toggle_language_system(keys: Res<ButtonInput<KeyCode>>, mut language: ResMut<MaterialLanguage>) {
+    if keys.just_pressed(KeyCode::KeyL) {
+        language.tag = if language.tag == "es-ES" {
+            "en-US".to_string()
+        } else {
+            "es-ES".to_string()
+        };
+
+        info!("MaterialLanguage.tag set to '{}'", language.tag);
+    }
+}
+
 fn fps_overlay_system(
     diagnostics: Res<DiagnosticsStore>,
     theme: Res<MaterialTheme>,
+    i18n: Res<MaterialI18n>,
+    language: Res<MaterialLanguage>,
     mut fps: Query<(&mut Text, &mut TextColor), With<FpsText>>,
 ) {
     let Some((mut text, mut color)) = fps.iter_mut().next() else { return };
@@ -201,9 +756,13 @@ fn fps_overlay_system(
         .get(&FrameTimeDiagnosticsPlugin::FPS)
         .and_then(|d| d.smoothed());
 
+    let prefix = i18n
+        .translate(&language.tag, "showcase.fps.prefix")
+        .unwrap_or("FPS:");
+
     let label = match fps_value {
-        Some(v) if v.is_finite() => format!("FPS: {v:>5.1}"),
-        _ => "FPS:  --.-".to_string(),
+        Some(v) if v.is_finite() => format!("{prefix} {v:>5.1}"),
+        _ => format!("{prefix}  --.-"),
     };
 
     *text = Text::new(label);
@@ -230,14 +789,22 @@ fn ensure_automation_test_ids_clickables_system(
     selected: Res<SelectedSection>,
     telemetry: Res<ComponentTelemetry>,
     mut commands: Commands,
-    buttons: Query<(Entity, &UiGlobalTransform), (With<MaterialButton>, Without<TestId>)>,
-    chips: Query<(Entity, &UiGlobalTransform), (With<MaterialChip>, Without<TestId>)>,
-    fabs: Query<(Entity, &UiGlobalTransform), (With<MaterialFab>, Without<TestId>)>,
-    badges: Query<(Entity, &UiGlobalTransform), (With<MaterialBadge>, Without<TestId>)>,
-    progress_linear: Query<(Entity, &UiGlobalTransform), (With<MaterialLinearProgress>, Without<TestId>)>,
-    progress_circular: Query<(Entity, &UiGlobalTransform), (With<MaterialCircularProgress>, Without<TestId>)>,
-    cards: Query<(Entity, &UiGlobalTransform), (With<MaterialCard>, Without<TestId>)>,
-    dividers: Query<(Entity, &UiGlobalTransform), (With<MaterialDivider>, Without<TestId>)>,
+    mut queries: ParamSet<(
+        Query<(Entity, &UiGlobalTransform), (With<MaterialButton>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialChip>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialFab>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialBadge>, Without<TestId>)>,
+        Query<
+            (Entity, &UiGlobalTransform),
+            (With<MaterialLinearProgress>, Without<TestId>),
+        >,
+        Query<
+            (Entity, &UiGlobalTransform),
+            (With<MaterialCircularProgress>, Without<TestId>),
+        >,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialCard>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialDivider>, Without<TestId>)>,
+    )>,
     icons: Query<(Entity, &UiGlobalTransform), (With<MaterialIcon>, Without<TestId>)>,
     icon_buttons: Query<(Entity, &UiGlobalTransform), (With<MaterialIconButton>, Without<TestId>)>,
 ) {
@@ -248,10 +815,10 @@ fn ensure_automation_test_ids_clickables_system(
     match selected.current {
         ComponentSection::Buttons => {
             let mut items: Vec<(Entity, f32)> =
-                buttons.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p0().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("button_{}", i)),
                 });
@@ -264,17 +831,17 @@ fn ensure_automation_test_ids_clickables_system(
                 .collect();
             icons.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in icons.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("app_bar_icon_{}", i)),
                 });
             }
 
             let mut fab_items: Vec<(Entity, f32)> =
-                fabs.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p2().iter().map(|(e, t)| (e, t.translation.y)).collect();
             fab_items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in fab_items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("app_bar_fab_{}", i)),
                 });
@@ -282,10 +849,10 @@ fn ensure_automation_test_ids_clickables_system(
         }
         ComponentSection::Chips => {
             let mut items: Vec<(Entity, f32)> =
-                chips.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p1().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("chip_{}", i)),
                 });
@@ -293,10 +860,10 @@ fn ensure_automation_test_ids_clickables_system(
         }
         ComponentSection::Fab => {
             let mut items: Vec<(Entity, f32)> =
-                fabs.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p2().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("fab_{}", i)),
                 });
@@ -304,35 +871,37 @@ fn ensure_automation_test_ids_clickables_system(
         }
         ComponentSection::Badges => {
             let mut items: Vec<(Entity, f32)> =
-                badges.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p3().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("badge_{}", i)),
                 });
             }
         }
         ComponentSection::Progress => {
-            let mut linear: Vec<(Entity, f32)> = progress_linear
+            let mut linear: Vec<(Entity, f32)> = queries
+                .p4()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
             linear.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in linear.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("progress_linear_{}", i)),
                 });
             }
 
-            let mut circular: Vec<(Entity, f32)> = progress_circular
+            let mut circular: Vec<(Entity, f32)> = queries
+                .p5()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
             circular.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in circular.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("progress_circular_{}", i)),
                 });
@@ -340,10 +909,10 @@ fn ensure_automation_test_ids_clickables_system(
         }
         ComponentSection::Cards => {
             let mut items: Vec<(Entity, f32)> =
-                cards.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p6().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("card_{}", i)),
                 });
@@ -351,10 +920,10 @@ fn ensure_automation_test_ids_clickables_system(
         }
         ComponentSection::Dividers => {
             let mut items: Vec<(Entity, f32)> =
-                dividers.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p7().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("divider_{}", i)),
                 });
@@ -365,7 +934,7 @@ fn ensure_automation_test_ids_clickables_system(
                 icons.iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("icon_{}", i)),
                 });
@@ -378,7 +947,7 @@ fn ensure_automation_test_ids_clickables_system(
                 .collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
-                    commands.queue(InsertTestIdIfExists {
+                commands.queue(InsertTestIdIfExists {
                     entity,
                     test_id: TestId::new(format!("icon_button_{}", i)),
                 });
@@ -392,15 +961,20 @@ fn ensure_automation_test_ids_inputs_system(
     selected: Res<SelectedSection>,
     telemetry: Res<ComponentTelemetry>,
     mut commands: Commands,
-    checkboxes: Query<(Entity, &UiGlobalTransform), (With<MaterialCheckbox>, Without<TestId>)>,
-    switches: Query<(Entity, &UiGlobalTransform), (With<MaterialSwitch>, Without<TestId>)>,
-    radios: Query<(Entity, &UiGlobalTransform), (With<MaterialRadio>, Without<TestId>)>,
-    sliders: Query<(Entity, &UiGlobalTransform), (With<MaterialSlider>, Without<TestId>)>,
-    slider_tracks: Query<(Entity, &UiGlobalTransform), (With<SliderTrack>, Without<TestId>)>,
-    slider_thumbs: Query<(Entity, &UiGlobalTransform), (With<SliderHandle>, Without<TestId>)>,
-    text_fields: Query<(Entity, &UiGlobalTransform), (With<MaterialTextField>, Without<TestId>)>,
-    selects: Query<(Entity, &UiGlobalTransform), (With<MaterialSelect>, Without<TestId>)>,
-    select_options: Query<(Entity, &UiGlobalTransform), (With<bevy_material_ui::select::SelectOptionItem>, Without<TestId>)>,
+    mut queries: ParamSet<(
+        Query<(Entity, &UiGlobalTransform), (With<MaterialCheckbox>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialSwitch>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialRadio>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialSlider>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<SliderTrack>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<SliderHandle>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialTextField>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialSelect>, Without<TestId>)>,
+    )>,
+    select_options: Query<
+        (Entity, &UiGlobalTransform),
+        (With<bevy_material_ui::select::SelectOptionItem>, Without<TestId>),
+    >,
 ) {
     if !telemetry.enabled {
         return;
@@ -408,7 +982,8 @@ fn ensure_automation_test_ids_inputs_system(
 
     match selected.current {
         ComponentSection::Checkboxes => {
-            let mut items: Vec<(Entity, f32)> = checkboxes
+            let mut items: Vec<(Entity, f32)> = queries
+                .p0()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -421,7 +996,8 @@ fn ensure_automation_test_ids_inputs_system(
             }
         }
         ComponentSection::Switches => {
-            let mut items: Vec<(Entity, f32)> = switches
+            let mut items: Vec<(Entity, f32)> = queries
+                .p1()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -435,7 +1011,7 @@ fn ensure_automation_test_ids_inputs_system(
         }
         ComponentSection::RadioButtons => {
             let mut items: Vec<(Entity, f32)> =
-                radios.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p2().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
@@ -447,7 +1023,7 @@ fn ensure_automation_test_ids_inputs_system(
         ComponentSection::Sliders => {
             // Slider root entities (for mapping slider_0_value, etc.)
             let mut items: Vec<(Entity, f32)> =
-                sliders.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p3().iter().map(|(e, t)| (e, t.translation.y)).collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
@@ -457,7 +1033,8 @@ fn ensure_automation_test_ids_inputs_system(
             }
 
             // Slider tracks (used by some tests for direct clicking)
-            let mut tracks: Vec<(Entity, f32)> = slider_tracks
+            let mut tracks: Vec<(Entity, f32)> = queries
+                .p4()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -470,7 +1047,8 @@ fn ensure_automation_test_ids_inputs_system(
             }
 
             // Slider thumbs (used as drag start points)
-            let mut thumbs: Vec<(Entity, f32)> = slider_thumbs
+            let mut thumbs: Vec<(Entity, f32)> = queries
+                .p5()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -483,7 +1061,8 @@ fn ensure_automation_test_ids_inputs_system(
             }
         }
         ComponentSection::TextFields => {
-            let mut items: Vec<(Entity, f32)> = text_fields
+            let mut items: Vec<(Entity, f32)> = queries
+                .p6()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -497,7 +1076,7 @@ fn ensure_automation_test_ids_inputs_system(
         }
         ComponentSection::Select => {
             let mut roots: Vec<(Entity, f32)> =
-                selects.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                queries.p7().iter().map(|(e, t)| (e, t.translation.y)).collect();
             roots.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in roots.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
@@ -527,19 +1106,23 @@ fn ensure_automation_test_ids_overlays_system(
     selected: Res<SelectedSection>,
     telemetry: Res<ComponentTelemetry>,
     mut commands: Commands,
-    show_dialog_buttons: Query<(Entity, &UiGlobalTransform), (With<ShowDialogButton>, Without<TestId>)>,
-    dialog_containers: Query<(Entity, &UiGlobalTransform), (With<DialogContainer>, Without<TestId>)>,
-    dialog_close_buttons: Query<(Entity, &UiGlobalTransform), (With<DialogCloseButton>, Without<TestId>)>,
-    dialog_confirm_buttons: Query<(Entity, &UiGlobalTransform), (With<DialogConfirmButton>, Without<TestId>)>,
-    date_picker_open_buttons: Query<(Entity, &UiGlobalTransform), (With<DatePickerOpenButton>, Without<TestId>)>,
-    date_pickers: Query<(Entity, &UiGlobalTransform), (With<MaterialDatePicker>, Without<TestId>)>,
-    time_picker_open_buttons: Query<(Entity, &UiGlobalTransform), (With<TimePickerOpenButton>, Without<TestId>)>,
-    time_pickers: Query<(Entity, &UiGlobalTransform), (With<MaterialTimePicker>, Without<TestId>)>,
-    menu_triggers: Query<(Entity, &UiGlobalTransform), (With<MenuTrigger>, Without<TestId>)>,
-    menu_dropdowns: Query<(Entity, &UiGlobalTransform), (With<MenuDropdown>, Without<TestId>)>,
-    menu_items: Query<(Entity, &UiGlobalTransform), (With<MenuItemMarker>, Without<TestId>)>,
-    snackbar_triggers: Query<(Entity, &UiGlobalTransform), (With<SnackbarTrigger>, Without<TestId>)>,
-    tooltip_demo_buttons: Query<(Entity, &UiGlobalTransform), (With<TooltipDemoButton>, Without<TestId>)>,
+    mut overlays_primary: ParamSet<(
+        Query<(Entity, &UiGlobalTransform), (With<ShowDialogButton>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<DialogContainer>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<DialogCloseButton>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<DialogConfirmButton>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<DatePickerOpenButton>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialDatePicker>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<TimePickerOpenButton>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MaterialTimePicker>, Without<TestId>)>,
+    )>,
+    mut overlays_menu: ParamSet<(
+        Query<(Entity, &UiGlobalTransform), (With<MenuTrigger>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MenuDropdown>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<MenuItemMarker>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<SnackbarTrigger>, Without<TestId>)>,
+        Query<(Entity, &UiGlobalTransform), (With<TooltipDemoButton>, Without<TestId>)>,
+    )>,
 ) {
     if !telemetry.enabled {
         return;
@@ -547,7 +1130,8 @@ fn ensure_automation_test_ids_overlays_system(
 
     match selected.current {
         ComponentSection::Dialogs => {
-            let mut opens: Vec<(Entity, f32)> = show_dialog_buttons
+            let mut opens: Vec<(Entity, f32)> = overlays_primary
+                .p0()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -559,7 +1143,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
 
-            let mut containers: Vec<(Entity, f32)> = dialog_containers
+            let mut containers: Vec<(Entity, f32)> = overlays_primary
+                .p1()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -571,7 +1156,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
 
-            let mut closes: Vec<(Entity, f32)> = dialog_close_buttons
+            let mut closes: Vec<(Entity, f32)> = overlays_primary
+                .p2()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -583,7 +1169,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
 
-            let mut confirms: Vec<(Entity, f32)> = dialog_confirm_buttons
+            let mut confirms: Vec<(Entity, f32)> = overlays_primary
+                .p3()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -596,7 +1183,8 @@ fn ensure_automation_test_ids_overlays_system(
             }
         }
         ComponentSection::DatePicker => {
-            let mut opens: Vec<(Entity, f32)> = date_picker_open_buttons
+            let mut opens: Vec<(Entity, f32)> = overlays_primary
+                .p4()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -608,7 +1196,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
 
-            let mut pickers: Vec<(Entity, f32)> = date_pickers
+            let mut pickers: Vec<(Entity, f32)> = overlays_primary
+                .p5()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -621,7 +1210,8 @@ fn ensure_automation_test_ids_overlays_system(
             }
         }
         ComponentSection::TimePicker => {
-            let mut opens: Vec<(Entity, f32)> = time_picker_open_buttons
+            let mut opens: Vec<(Entity, f32)> = overlays_primary
+                .p6()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -633,7 +1223,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
 
-            let mut pickers: Vec<(Entity, f32)> = time_pickers
+            let mut pickers: Vec<(Entity, f32)> = overlays_primary
+                .p7()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -646,7 +1237,8 @@ fn ensure_automation_test_ids_overlays_system(
             }
         }
         ComponentSection::Menus => {
-            let mut triggers: Vec<(Entity, f32)> = menu_triggers
+            let mut triggers: Vec<(Entity, f32)> = overlays_menu
+                .p0()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -658,7 +1250,8 @@ fn ensure_automation_test_ids_overlays_system(
                 });
             }
 
-            let mut dropdowns: Vec<(Entity, f32)> = menu_dropdowns
+            let mut dropdowns: Vec<(Entity, f32)> = overlays_menu
+                .p1()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -671,7 +1264,11 @@ fn ensure_automation_test_ids_overlays_system(
             }
 
             let mut items: Vec<(Entity, f32)> =
-                menu_items.iter().map(|(e, t)| (e, t.translation.y)).collect();
+                overlays_menu
+                    .p2()
+                    .iter()
+                    .map(|(e, t)| (e, t.translation.y))
+                    .collect();
             items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
             for (i, (entity, _)) in items.into_iter().enumerate() {
                 commands.queue(InsertTestIdIfExists {
@@ -681,7 +1278,8 @@ fn ensure_automation_test_ids_overlays_system(
             }
         }
         ComponentSection::Snackbar => {
-            let mut items: Vec<(Entity, f32)> = snackbar_triggers
+            let mut items: Vec<(Entity, f32)> = overlays_menu
+                .p3()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -694,7 +1292,8 @@ fn ensure_automation_test_ids_overlays_system(
             }
         }
         ComponentSection::Tooltips => {
-            let mut items: Vec<(Entity, f32)> = tooltip_demo_buttons
+            let mut items: Vec<(Entity, f32)> = overlays_menu
+                .p4()
                 .iter()
                 .map(|(e, t)| (e, t.translation.y))
                 .collect();
@@ -1248,7 +1847,7 @@ fn setup_ui(
         .with_children(|overlay| {
             overlay.spawn((
                 FpsText,
-                Text::new("FPS:  --.-"),
+                Text::new(""),
                 TextFont {
                     font_size: 12.0,
                     ..default()
@@ -1298,7 +1897,7 @@ fn setup_ui(
         .spawn((
             SettingsDialog,
             DialogBuilder::new()
-                .title("Settings")
+                .title("")
                 .modal(true)
                 .build(&theme),
         ))
@@ -1306,7 +1905,8 @@ fn setup_ui(
             // Headline
             dialog.spawn((
                 DialogHeadline,
-                Text::new("Settings"),
+                Text::new(""),
+                LocalizedText::new("showcase.settings.title").with_default("Settings"),
                 TextFont {
                     font_size: 24.0,
                     ..default()
@@ -1340,7 +1940,9 @@ fn setup_ui(
                         })
                         .with_children(|row| {
                             row.spawn((
-                                Text::new("AutoNoVsync"),
+                                Text::new(""),
+                                LocalizedText::new("showcase.settings.vsync_mode")
+                                    .with_default("AutoNoVsync"),
                                 TextFont {
                                     font_size: 14.0,
                                     ..default()
@@ -1400,7 +2002,7 @@ fn setup_ui(
                 });
 
             // Actions (OK button closes the dialog)
-            let ok_label = "OK";
+            let ok_label = "";
             let ok_button = MaterialButton::new(ok_label).with_variant(ButtonVariant::Filled);
             let ok_text_color = ok_button.text_color(&theme);
 
@@ -1427,7 +2029,8 @@ fn setup_ui(
                         .with_children(|btn| {
                             btn.spawn((
                                 ButtonLabel,
-                                Text::new(ok_label),
+                                Text::new(""),
+                                LocalizedText::new("mui.common.ok").with_default("OK"),
                                 TextFont {
                                     font_size: 14.0,
                                     ..default()
@@ -1563,7 +2166,9 @@ fn spawn_ui_root(
                 &scaffold,
                 |sidebar| {
                     sidebar.spawn((
-                        Text::new("Material UI Showcase"),
+                        Text::new(""),
+                        LocalizedText::new("showcase.app.title")
+                            .with_default("Material UI Showcase"),
                         TextFont {
                             font_size: 18.0,
                             ..default()
@@ -1660,7 +2265,11 @@ fn spawn_detail_scroller(
                 .spawn((
                     DetailSurface,
                     Node {
-                        width: Val::Percent(100.0),
+                        // Allow the surface to grow wider than the viewport when needed.
+                        // This enables horizontal overflow detection (and thus a horizontal
+                        // scrollbar) when content has an intrinsic width larger than the window.
+                        width: Val::Auto,
+                        min_width: Val::Percent(100.0),
                         padding: UiRect::all(Val::Px(16.0)),
                         flex_direction: FlexDirection::Column,
                         align_items: AlignItems::Stretch,
@@ -1834,59 +2443,64 @@ fn menu_demo_system(
 #[allow(clippy::type_complexity)]
 fn date_picker_demo_system(
     mut open_buttons: Query<(&Interaction, &DatePickerOpenButton), Changed<Interaction>>,
-    mut pickers: Query<&mut MaterialDatePicker>,
+    mut pickers: ParamSet<(Query<&mut MaterialDatePicker>, Query<&MaterialDatePicker>)>,
     mut submit: MessageReader<DatePickerSubmitEvent>,
     mut cancel: MessageReader<DatePickerCancelEvent>,
     mut result_texts: Query<(&DatePickerResultDisplay, &mut Text)>,
+    i18n: Option<Res<MaterialI18n>>,
+    language: Option<Res<MaterialLanguage>>,
 ) {
+    let (Some(i18n), Some(language)) = (i18n, language) else {
+        return;
+    };
+
+    let prefix = i18n
+        .translate(&language.tag, "showcase.common.result_prefix")
+        .unwrap_or("Result:")
+        .to_string();
+    let none = i18n
+        .translate(&language.tag, "showcase.common.none")
+        .unwrap_or("None")
+        .to_string();
+    let canceled = i18n
+        .translate(&language.tag, "showcase.common.canceled")
+        .unwrap_or("Canceled")
+        .to_string();
+    let to_word = i18n
+        .translate(&language.tag, "showcase.date_picker.to")
+        .unwrap_or("to")
+        .to_string();
+    let selecting = i18n
+        .translate(&language.tag, "showcase.date_picker.selecting")
+        .unwrap_or("(selecting...)")
+        .to_string();
+
     // Open picker when the demo button is pressed.
     for (interaction, open_button) in open_buttons.iter_mut() {
         if *interaction != Interaction::Pressed {
             continue;
         }
 
-        if let Ok(mut picker) = pickers.get_mut(open_button.0) {
+        if let Ok(mut picker) = pickers.p0().get_mut(open_button.0) {
             picker.open = true;
         }
     }
 
-    // Update result text on submit.
-    for ev in submit.read() {
-        let label = match &ev.selection {
-            DateSelection::Single(date) => {
-                format!("Result: {}-{:02}-{:02}", date.year, date.month as u8, date.day)
-            }
-            DateSelection::Range { start, end } => {
-                if let Some(end) = end {
-                    format!(
-                        "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
-                        start.year, start.month as u8, start.day,
-                        end.year, end.month as u8, end.day
-                    )
-                } else {
-                    format!("Result: {}-{:02}-{:02} (selecting...)", start.year, start.month as u8, start.day)
-                }
-            }
-        };
+    // Consume picker events (selection state is read directly below).
+    for _ in submit.read() {}
+    for _ in cancel.read() {}
 
-        for (display, mut text) in result_texts.iter_mut() {
-            if display.0 == ev.entity {
-                *text = Text::new(label.as_str());
-            }
-        }
-    }
-
-    // Update result text on cancel.
-    for ev in cancel.read() {
-        let label = if let Ok(picker) = pickers.get(ev.entity) {
+    // Render the current selection for each result display.
+    for (display, mut text) in result_texts.iter_mut() {
+        let label = if let Ok(picker) = pickers.p1().get(display.0) {
             match picker.selection() {
                 Some(DateSelection::Single(date)) => {
-                    format!("Result: {}-{:02}-{:02}", date.year, date.month as u8, date.day)
+                    format!("{prefix} {}-{:02}-{:02}", date.year, date.month as u8, date.day)
                 }
                 Some(DateSelection::Range { start, end }) => {
                     if let Some(end) = end {
                         format!(
-                            "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
+                            "{prefix} {}-{:02}-{:02} {to_word} {}-{:02}-{:02}",
                             start.year,
                             start.month as u8,
                             start.day,
@@ -1896,69 +2510,69 @@ fn date_picker_demo_system(
                         )
                     } else {
                         format!(
-                            "Result: {}-{:02}-{:02} (selecting...)",
+                            "{prefix} {}-{:02}-{:02} {selecting}",
                             start.year,
                             start.month as u8,
                             start.day
                         )
                     }
                 }
-                None => "Result: None".to_string(),
+                None => format!("{prefix} {none}"),
             }
         } else {
-            "Result: Canceled".to_string()
+            format!("{prefix} {canceled}")
         };
 
-        for (display, mut text) in result_texts.iter_mut() {
-            if display.0 == ev.entity {
-                *text = Text::new(label.as_str());
-            }
-        }
+        text.0 = label;
     }
 }
 
 fn time_picker_demo_system(
     mut open_buttons: Query<(&Interaction, &TimePickerOpenButton), Changed<Interaction>>,
-    mut pickers: Query<&mut MaterialTimePicker>,
+    mut pickers: ParamSet<(Query<&mut MaterialTimePicker>, Query<&MaterialTimePicker>)>,
     mut submit: MessageReader<TimePickerSubmitEvent>,
     mut cancel: MessageReader<TimePickerCancelEvent>,
     mut result_texts: Query<(&TimePickerResultDisplay, &mut Text)>,
+    i18n: Option<Res<MaterialI18n>>,
+    language: Option<Res<MaterialLanguage>>,
 ) {
+    let (Some(i18n), Some(language)) = (i18n, language) else {
+        return;
+    };
+
+    let prefix = i18n
+        .translate(&language.tag, "showcase.common.result_prefix")
+        .unwrap_or("Result:")
+        .to_string();
+    let canceled = i18n
+        .translate(&language.tag, "showcase.common.canceled")
+        .unwrap_or("Canceled")
+        .to_string();
+
     // Open picker when the demo button is pressed.
     for (interaction, open_button) in open_buttons.iter_mut() {
         if *interaction != Interaction::Pressed {
             continue;
         }
 
-        if let Ok(mut picker) = pickers.get_mut(open_button.0) {
+        if let Ok(mut picker) = pickers.p0().get_mut(open_button.0) {
             picker.open = true;
         }
     }
 
-    // Update result text on submit.
-    for ev in submit.read() {
-        let label = format!("Result: {:02}:{:02}", ev.hour, ev.minute);
+    // Consume picker events (selection state is read directly below).
+    for _ in submit.read() {}
+    for _ in cancel.read() {}
 
-        for (display, mut text) in result_texts.iter_mut() {
-            if display.0 == ev.entity {
-                *text = Text::new(label.as_str());
-            }
-        }
-    }
-
-    // Update result text on cancel.
-    for ev in cancel.read() {
-        let label = if let Ok(picker) = pickers.get(ev.entity) {
-            format!("Result: {:02}:{:02}", picker.hour, picker.minute)
+    // Render the current time for each result display.
+    for (display, mut text) in result_texts.iter_mut() {
+        let label = if let Ok(picker) = pickers.p1().get(display.0) {
+            format!("{prefix} {:02}:{:02}", picker.hour, picker.minute)
         } else {
-            "Result: Canceled".to_string()
+            format!("{prefix} {canceled}")
         };
 
-        for (display, mut text) in result_texts.iter_mut() {
-            if display.0 == ev.entity {
-                *text = Text::new(label.as_str());
-            }
-        }
+        text.0 = label;
     }
 }
 
@@ -2236,9 +2850,28 @@ fn dialog_demo_open_close_system(
     mut confirm_buttons: Query<&Interaction, (Changed<Interaction>, With<DialogConfirmButton>)>,
     mut dialogs: Query<(&mut MaterialDialog, Option<&mut Visibility>), With<DialogContainer>>,
     mut result_text: Query<&mut Text, With<DialogResultDisplay>>,
+    i18n: Option<Res<MaterialI18n>>,
+    language: Option<Res<MaterialLanguage>>,
 ) {
+    let (Some(i18n), Some(language)) = (i18n, language) else {
+        return;
+    };
+
+    let prefix = i18n
+        .translate(&language.tag, "showcase.common.result_prefix")
+        .unwrap_or("Result:")
+        .to_string();
+    let cancelled = i18n
+        .translate(&language.tag, "showcase.dialogs.result.cancelled")
+        .unwrap_or("Cancelled")
+        .to_string();
+    let confirmed = i18n
+        .translate(&language.tag, "showcase.dialogs.result.confirmed")
+        .unwrap_or("Confirmed")
+        .to_string();
+
     let mut open = false;
-    let mut close_reason: Option<&'static str> = None;
+    let mut close_reason: Option<String> = None;
 
     for interaction in show_buttons.iter_mut() {
         if *interaction == Interaction::Pressed {
@@ -2248,13 +2881,13 @@ fn dialog_demo_open_close_system(
 
     for interaction in close_buttons.iter_mut() {
         if *interaction == Interaction::Pressed {
-            close_reason = Some("Cancelled");
+            close_reason = Some(cancelled.clone());
         }
     }
 
     for interaction in confirm_buttons.iter_mut() {
         if *interaction == Interaction::Pressed {
-            close_reason = Some("Confirmed");
+            close_reason = Some(confirmed.clone());
         }
     }
 
@@ -2275,7 +2908,7 @@ fn dialog_demo_open_close_system(
             }
         }
         for mut text in result_text.iter_mut() {
-            text.0 = format!("Result: {}", reason);
+            text.0 = format!("{prefix} {reason}");
         }
     }
 }
@@ -2353,6 +2986,7 @@ fn spawn_selected_section(
         ComponentSection::LoadingIndicator => spawn_loading_indicator_section(parent, theme, materials),
         ComponentSection::Search => spawn_search_section(parent, theme),
         ComponentSection::ThemeColors => spawn_theme_section(parent, theme, seed_argb),
+        ComponentSection::Translations => spawn_translations_section(parent, theme),
     }
 }
 

@@ -11,6 +11,7 @@ use bevy::ui::BoxShadow;
 
 use crate::{
     elevation::Elevation,
+    i18n::LocalizedText,
     telemetry::{InsertTestIdIfExists, TelemetryConfig, TestId},
     theme::MaterialTheme,
     tokens::{CornerRadius, Spacing},
@@ -345,6 +346,7 @@ fn dialog_scrim_pickable_system(
 /// Builder for dialogs
 pub struct DialogBuilder {
     dialog: MaterialDialog,
+    title_key: Option<String>,
 }
 
 impl DialogBuilder {
@@ -352,6 +354,7 @@ impl DialogBuilder {
     pub fn new() -> Self {
         Self {
             dialog: MaterialDialog::new(),
+            title_key: None,
         }
     }
 
@@ -369,6 +372,13 @@ impl DialogBuilder {
     /// Set title
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.dialog.title = Some(title.into());
+        self
+    }
+
+    /// Set title from an i18n key.
+    pub fn title_key(mut self, key: impl Into<String>) -> Self {
+        self.dialog.title = Some(String::new());
+        self.title_key = Some(key.into());
         self
     }
 
@@ -587,24 +597,42 @@ impl SpawnDialogChild for ChildSpawnerCommands<'_> {
         with_content: impl FnOnce(&mut ChildSpawnerCommands),
     ) {
         let title_text: Option<String> = builder.dialog.title.clone();
+        let title_key: Option<String> = builder.title_key.clone();
         let headline_color = theme.on_surface;
 
         self.spawn(builder.build(theme)).with_children(|dialog| {
             // Headline/Title
             if let Some(ref title) = title_text {
-                dialog.spawn((
-                    DialogHeadline,
-                    Text::new(title.as_str()),
-                    TextFont {
-                        font_size: 24.0,
-                        ..default()
-                    },
-                    TextColor(headline_color),
-                    Node {
-                        margin: UiRect::bottom(Val::Px(16.0)),
-                        ..default()
-                    },
-                ));
+                if let Some(key) = title_key.as_deref() {
+                    dialog.spawn((
+                        DialogHeadline,
+                        Text::new(""),
+                        LocalizedText::new(key),
+                        TextFont {
+                            font_size: 24.0,
+                            ..default()
+                        },
+                        TextColor(headline_color),
+                        Node {
+                            margin: UiRect::bottom(Val::Px(16.0)),
+                            ..default()
+                        },
+                    ));
+                } else {
+                    dialog.spawn((
+                        DialogHeadline,
+                        Text::new(title.as_str()),
+                        TextFont {
+                            font_size: 24.0,
+                            ..default()
+                        },
+                        TextColor(headline_color),
+                        Node {
+                            margin: UiRect::bottom(Val::Px(16.0)),
+                            ..default()
+                        },
+                    ));
+                }
             }
 
             // Content area

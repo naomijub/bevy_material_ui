@@ -23,7 +23,9 @@ pub fn spawn_toolbar_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.toolbar.title",
                 "Toolbars",
+                "showcase.section.toolbar.description",
                 "Compact top row with navigation, title, and actions",
             );
 

@@ -27,7 +27,9 @@ pub fn spawn_list_section(
             spawn_section_header(
                 section,
                 &theme_clone,
+                "showcase.section.lists.title",
                 "Lists (with Selection)",
+                "showcase.section.lists.description",
                 "Scrollable list with single or multi-select - click items to select",
             );
 

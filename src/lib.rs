@@ -58,6 +58,12 @@ use bevy::prelude::*;
 /// Theme and color system based on Material Design 3
 pub mod theme;
 
+/// Locale configuration and locale-driven defaults
+pub mod locale;
+
+/// Runtime localization / translation (i18n)
+pub mod i18n;
+
 /// HCT color space and dynamic color generation
 pub mod color;
 
@@ -191,6 +197,10 @@ pub mod prelude {
 
     // Core
     pub use crate::theme::{ColorScheme, MaterialTheme};
+    pub use crate::i18n::{
+        LocalizedText, MaterialI18n, MaterialI18nPlugin, MaterialLanguage,
+        MaterialLanguageOverride, MaterialTranslations,
+    };
     pub use crate::typography::Typography;
     pub use crate::tokens::{CornerRadius, Duration, Easing, Spacing};
     pub use crate::elevation::{Elevation, ElevationShadow};
@@ -266,6 +276,7 @@ pub mod prelude {
     pub use crate::text_field::{
         TextFieldBuilder, TextFieldChangeEvent, TextFieldInput, TextFieldLabel,
         TextFieldPlugin, TextFieldSubmitEvent, TextFieldSupportingText, TextFieldVariant,
+        TextFieldFormatter,
         MaterialTextField, SpawnTextFieldChild, TEXT_FIELD_HEIGHT, TEXT_FIELD_MIN_WIDTH,
     };
 
@@ -508,6 +519,14 @@ impl Plugin for MaterialUiCorePlugin {
     fn build(&self, app: &mut App) {
         // Theme is a resource; initializing it is idempotent.
         app.init_resource::<theme::MaterialTheme>();
+
+        // Locale is a resource; initializing it is idempotent.
+        app.init_resource::<locale::MaterialLocale>();
+
+        // i18n is a plugin (assets + systems), so guard it.
+        if !app.is_plugin_added::<i18n::MaterialI18nPlugin>() {
+            app.add_plugins(i18n::MaterialI18nPlugin);
+        }
 
         // These are true plugins (adding twice panics), so guard them.
         if !app.is_plugin_added::<focus::FocusPlugin>() {

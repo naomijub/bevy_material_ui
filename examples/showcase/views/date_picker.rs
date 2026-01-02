@@ -19,7 +19,9 @@ pub fn spawn_date_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.date_picker.title",
                 "Date Picker",
+                "showcase.section.date_picker.description",
                 "Material Design 3 calendar-based date selection",
             );
 
@@ -27,7 +29,7 @@ pub fn spawn_date_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
             let picker_entity = section.spawn_date_picker(
                 theme,
                 DatePickerBuilder::new()
-                    .title("Select Date")
+                    .title_key("showcase.date_picker.title")
                     .single_date(Date::new(2025, 1, 15))
                     .width(Val::Px(360.0)),
             );
@@ -40,19 +42,20 @@ pub fn spawn_date_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
                     ..default()
                 })
                 .with_children(|row| {
-                    let label = "Open Date Picker";
-                    let btn = MaterialButton::new(label).with_variant(ButtonVariant::Filled);
+                    let btn = MaterialButton::new("").with_variant(ButtonVariant::Filled);
                     let text_color = btn.text_color(theme);
 
                     row.spawn((
                         DatePickerOpenButton(picker_entity),
                         Interaction::None,
-                        MaterialButtonBuilder::new(label).filled().build(theme),
+                        MaterialButtonBuilder::new("").filled().build(theme),
                     ))
                     .with_children(|btn| {
                         btn.spawn((
                             ButtonLabel,
-                            Text::new(label),
+                            Text::new(""),
+                            LocalizedText::new("showcase.date_picker.open_button")
+                                .with_default("Open Date Picker"),
                             TextFont {
                                 font_size: 14.0,
                                 ..default()
@@ -63,7 +66,7 @@ pub fn spawn_date_picker_section(parent: &mut ChildSpawnerCommands, theme: &Mate
 
                     row.spawn((
                         DatePickerResultDisplay(picker_entity),
-                        Text::new("Result: None"),
+                        Text::new(""),
                         TextFont {
                             font_size: 14.0,
                             ..default()

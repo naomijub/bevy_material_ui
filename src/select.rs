@@ -7,6 +7,7 @@ use bevy::prelude::*;
 
 use crate::{
     icons::{icon_by_name, MaterialIcon, ICON_EXPAND_MORE},
+    i18n::{MaterialI18n, MaterialLanguage, MaterialLanguageOverride},
     telemetry::{InsertTestIdIfExists, TelemetryConfig, TestId},
     theme::MaterialTheme,
     tokens::{CornerRadius, Spacing},
@@ -27,6 +28,8 @@ impl Plugin for SelectPlugin {
                 select_style_system,
                 select_content_style_system,
                 select_theme_refresh_system,
+                select_localization_system,
+                select_dropdown_rebuild_options_system,
                 select_dropdown_sync_system,
                 select_option_interaction_system,
                 select_telemetry_system,
@@ -35,17 +38,161 @@ impl Plugin for SelectPlugin {
     }
 }
 
+#[derive(Component, Debug, Default, Clone, PartialEq, Eq)]
+pub struct SelectLocalization {
+    pub label_key: Option<String>,
+    pub supporting_text_key: Option<String>,
+    pub error_text_key: Option<String>,
+}
+
+impl SelectLocalization {
+    pub fn label_key(mut self, key: impl Into<String>) -> Self {
+        self.label_key = Some(key.into());
+        self
+    }
+
+    pub fn supporting_text_key(mut self, key: impl Into<String>) -> Self {
+        self.supporting_text_key = Some(key.into());
+        self
+    }
+
+    pub fn error_text_key(mut self, key: impl Into<String>) -> Self {
+        self.error_text_key = Some(key.into());
+        self
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.label_key.is_some() || self.supporting_text_key.is_some() || self.error_text_key.is_some()
+    }
+}
+
+#[derive(Component, Debug, Default, Clone, PartialEq, Eq)]
+struct SelectLocalizationState {
+    last_revision: u64,
+    last_language: String,
+}
+
+fn resolve_language_tag(
+    mut entity: Entity,
+    child_of: &Query<&ChildOf>,
+    overrides: &Query<&MaterialLanguageOverride>,
+    global: &MaterialLanguage,
+) -> String {
+    if let Ok(ov) = overrides.get(entity) {
+        return ov.tag.clone();
+    }
+
+    while let Ok(parent) = child_of.get(entity) {
+        entity = parent.parent();
+        if let Ok(ov) = overrides.get(entity) {
+            return ov.tag.clone();
+        }
+    }
+
+    global.tag.clone()
+}
+
+fn select_localization_system(
+    i18n: Option<Res<MaterialI18n>>,
+    language: Option<Res<MaterialLanguage>>,
+    child_of: Query<&ChildOf>,
+    overrides: Query<&MaterialLanguageOverride>,
+    mut selects: Query<(
+        Entity,
+        &SelectLocalization,
+        &mut MaterialSelect,
+        Option<&mut SelectLocalizationState>,
+    )>,
+    mut commands: Commands,
+) {
+    let (Some(i18n), Some(language)) = (i18n, language) else {
+        return;
+    };
+
+    let global_revision = i18n.revision();
+
+    for (entity, loc, mut select, state) in selects.iter_mut() {
+        if !loc.is_enabled() {
+            continue;
+        }
+
+        let resolved_language = resolve_language_tag(entity, &child_of, &overrides, &language);
+
+        let needs_update = match &state {
+            Some(s) => s.last_revision != global_revision || s.last_language != resolved_language,
+            None => true,
+        };
+
+        if !needs_update {
+            continue;
+        }
+
+        if let Some(key) = loc.label_key.as_deref() {
+            if let Some(v) = i18n.translate(&resolved_language, key) {
+                let next = v.to_string();
+                if select.label.as_deref() != Some(next.as_str()) {
+                    select.label = Some(next);
+                }
+            }
+        }
+
+        if let Some(key) = loc.supporting_text_key.as_deref() {
+            if let Some(v) = i18n.translate(&resolved_language, key) {
+                let next = v.to_string();
+                if select.supporting_text.as_deref() != Some(next.as_str()) {
+                    select.supporting_text = Some(next);
+                }
+            }
+        }
+
+        if let Some(key) = loc.error_text_key.as_deref() {
+            if let Some(v) = i18n.translate(&resolved_language, key) {
+                let next = v.to_string();
+                if select.error_text.as_deref() != Some(next.as_str()) {
+                    select.error_text = Some(next);
+                }
+            }
+        }
+
+        // Localize option labels.
+        for option in select.options.iter_mut() {
+            let Some(key) = option.label_key.as_deref() else {
+                continue;
+            };
+
+            if let Some(v) = i18n.translate(&resolved_language, key) {
+                let next = v.to_string();
+                if option.label != next {
+                    option.label = next;
+                }
+            }
+        }
+
+        if let Some(mut state) = state {
+            state.last_revision = global_revision;
+            state.last_language = resolved_language;
+        } else {
+            commands.entity(entity).insert(SelectLocalizationState {
+                last_revision: global_revision,
+                last_language: resolved_language,
+            });
+        }
+    }
+}
+
 fn select_telemetry_system(
     mut commands: Commands,
     telemetry: Option<Res<TelemetryConfig>>,
     selects: Query<(&TestId, &Children), With<MaterialSelect>>,
     children_query: Query<&Children>,
-    display_texts: Query<(), With<SelectDisplayText>>,
-    arrows: Query<(), With<SelectDropdownArrow>>,
-    dropdowns: Query<(), With<SelectDropdown>>,
-    option_rows: Query<&SelectOptionItem>,
-    option_labels: Query<(), With<SelectOptionLabelText>>,
-    option_icons: Query<(), With<SelectOptionIcon>>,
+    mut queries: ParamSet<(
+        Query<(), With<SelectDisplayText>>,
+        Query<(), With<SelectDropdownArrow>>,
+        Query<(), With<SelectDropdown>>,
+        Query<&SelectOptionItem>,
+        Query<(), With<SelectOptionLabelText>>,
+        Query<(), With<SelectOptionIcon>>,
+    )>,
 ) {
     let Some(telemetry) = telemetry else {
         return;
@@ -65,7 +212,7 @@ fn select_telemetry_system(
 
         let mut stack: Vec<Entity> = children.iter().collect();
         while let Some(entity) = stack.pop() {
-            if !found_display && display_texts.get(entity).is_ok() {
+            if !found_display && queries.p0().get(entity).is_ok() {
                 found_display = true;
                 commands.queue(InsertTestIdIfExists {
                     entity,
@@ -73,7 +220,7 @@ fn select_telemetry_system(
                 });
             }
 
-            if !found_arrow && arrows.get(entity).is_ok() {
+            if !found_arrow && queries.p1().get(entity).is_ok() {
                 found_arrow = true;
                 commands.queue(InsertTestIdIfExists {
                     entity,
@@ -81,7 +228,7 @@ fn select_telemetry_system(
                 });
             }
 
-            if !found_dropdown && dropdowns.get(entity).is_ok() {
+            if !found_dropdown && queries.p2().get(entity).is_ok() {
                 found_dropdown = true;
                 commands.queue(InsertTestIdIfExists {
                     entity,
@@ -89,7 +236,7 @@ fn select_telemetry_system(
                 });
             }
 
-            if let Ok(option) = option_rows.get(entity) {
+            if let Ok(option) = queries.p3().get(entity) {
                 let option_base = format!("{base}/option/{}", option.index);
                 commands.queue(InsertTestIdIfExists {
                     entity,
@@ -113,7 +260,7 @@ fn select_telemetry_system(
             let mut found_icon = false;
             let mut stack: Vec<Entity> = children.iter().collect();
             while let Some(entity) = stack.pop() {
-                if !found_icon && option_icons.get(entity).is_ok() {
+                if !found_icon && queries.p5().get(entity).is_ok() {
                     found_icon = true;
                     commands.queue(InsertTestIdIfExists {
                         entity,
@@ -121,7 +268,7 @@ fn select_telemetry_system(
                     });
                 }
 
-                if !found_label && option_labels.get(entity).is_ok() {
+                if !found_label && queries.p4().get(entity).is_ok() {
                     found_label = true;
                     commands.queue(InsertTestIdIfExists {
                         entity,
@@ -324,6 +471,8 @@ impl MaterialSelect {
 pub struct SelectOption {
     /// Display label
     pub label: String,
+    /// Optional i18n key for the label.
+    pub label_key: Option<String>,
     /// Optional value (can be used for form submission)
     pub value: Option<String>,
     /// Optional leading icon
@@ -337,10 +486,18 @@ impl SelectOption {
     pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
+            label_key: None,
             value: None,
             icon: None,
             disabled: false,
         }
+    }
+
+    /// Set the label from an i18n key.
+    pub fn label_key(mut self, key: impl Into<String>) -> Self {
+        self.label = String::new();
+        self.label_key = Some(key.into());
+        self
     }
 
     /// Set the value
@@ -606,6 +763,7 @@ fn select_theme_refresh_system(
 pub struct SelectBuilder {
     select: MaterialSelect,
     width: Val,
+    localization: SelectLocalization,
 }
 
 impl SelectBuilder {
@@ -614,7 +772,26 @@ impl SelectBuilder {
         Self {
             select: MaterialSelect::new(options),
             width: Val::Px(210.0),
+            localization: SelectLocalization::default(),
         }
+    }
+
+    /// Localize the select's placeholder/label via a translation key.
+    pub fn label_key(mut self, key: impl Into<String>) -> Self {
+        self.localization = self.localization.label_key(key);
+        self
+    }
+
+    /// Localize the select's supporting text via a translation key.
+    pub fn supporting_text_key(mut self, key: impl Into<String>) -> Self {
+        self.localization = self.localization.supporting_text_key(key);
+        self
+    }
+
+    /// Localize the select's error text via a translation key.
+    pub fn error_text_key(mut self, key: impl Into<String>) -> Self {
+        self.localization = self.localization.error_text_key(key);
+        self
     }
 
     /// Set variant
@@ -686,6 +863,7 @@ impl SelectBuilder {
 
         (
             self.select,
+            self.localization,
             Button,
             Node {
                 width: self.width,
@@ -755,13 +933,145 @@ pub struct SelectDropdownArrow;
 #[derive(Component)]
 pub struct SelectOptionLabelText;
 
+/// Rebuild dropdown option rows when `MaterialSelect.options` changes.
+///
+/// The select component spawns option rows at build time. Some UIs (like the
+/// showcase Translations view) populate options dynamically after spawn.
+fn select_dropdown_rebuild_options_system(
+    theme: Option<Res<MaterialTheme>>,
+    selects: Query<(Entity, &MaterialSelect, &Children), Changed<MaterialSelect>>,
+    dropdowns: Query<(), With<SelectDropdown>>,
+    dropdown_children: Query<&Children, With<SelectDropdown>>,
+    option_rows: Query<(), With<SelectOptionItem>>,
+    children_query: Query<&Children>,
+    mut commands: Commands,
+) {
+    let Some(theme) = theme else { return };
+
+    for (select_entity, select, children) in selects.iter() {
+        // Find dropdown child.
+        let Some(dropdown_entity) = children
+            .iter()
+            .find(|e| dropdowns.get(*e).is_ok())
+        else {
+            continue;
+        };
+
+        // Collect current option row entities.
+        // Note: If the dropdown was spawned with zero children, it won't have a `Children`
+        // component, so we treat a missing Children as "zero existing rows".
+        let existing_rows: Vec<Entity> = dropdown_children
+            .get(dropdown_entity)
+            .map(|kids| {
+                kids.iter()
+                    .filter(|e| option_rows.get(*e).is_ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if existing_rows.len() == select.options.len() {
+            continue;
+        }
+
+        // Remove old rows.
+        for row in existing_rows {
+            let mut stack = vec![row];
+            let mut to_despawn = Vec::new();
+            while let Some(e) = stack.pop() {
+                to_despawn.push(e);
+                if let Ok(kids) = children_query.get(e) {
+                    stack.extend(kids.iter());
+                }
+            }
+
+            for e in to_despawn.into_iter().rev() {
+                commands.entity(e).despawn();
+            }
+        }
+
+        // Spawn new rows.
+        let option_text_color = theme.on_surface;
+        let selected_index = select.selected_index;
+        let options = select.options.clone();
+
+        commands.entity(dropdown_entity).with_children(|dropdown| {
+            for (index, option) in options.iter().enumerate() {
+                let is_disabled = option.disabled;
+                let is_selected = selected_index.is_some_and(|i| i == index);
+                let row_bg = if is_selected {
+                    theme.secondary_container
+                } else {
+                    Color::NONE
+                };
+
+                dropdown
+                    .spawn((
+                        SelectOwner(select_entity),
+                        SelectOptionItem {
+                            index,
+                            label: option.label.clone(),
+                        },
+                        Button,
+                        Interaction::None,
+                        Node {
+                            height: Val::Px(SELECT_OPTION_HEIGHT),
+                            padding: UiRect::horizontal(Val::Px(Spacing::LARGE)),
+                            align_items: AlignItems::Center,
+                            column_gap: Val::Px(Spacing::MEDIUM),
+                            ..default()
+                        },
+                        BackgroundColor(row_bg),
+                    ))
+                    .with_children(|row| {
+                        if let Some(icon) = &option.icon {
+                            if let Some(id) = icon_by_name(icon.as_str()) {
+                                row.spawn((
+                                    SelectOptionIcon,
+                                    MaterialIcon::new(id)
+                                        .with_size(20.0)
+                                        .with_color(if is_disabled {
+                                            option_text_color.with_alpha(0.38)
+                                        } else {
+                                            option_text_color
+                                        }),
+                                ));
+                            }
+                        }
+
+                        row.spawn((
+                            SelectOptionLabelText,
+                            Text::new(option.label.clone()),
+                            TextFont {
+                                font_size: 14.0,
+                                ..default()
+                            },
+                            TextColor(if is_disabled {
+                                option_text_color.with_alpha(0.38)
+                            } else {
+                                option_text_color
+                            }),
+                        ));
+                    });
+            }
+        });
+    }
+}
+
 /// Keep dropdown visibility + displayed text in sync with `MaterialSelect`.
 fn select_dropdown_sync_system(
-    mut selects: Query<(&MaterialSelect, &Children), Changed<MaterialSelect>>,
+    mut selects: Query<(Entity, &MaterialSelect, &Children), Changed<MaterialSelect>>,
     mut dropdowns: Query<&mut Visibility, With<SelectDropdown>>,
-    mut display_texts: Query<&mut Text, With<SelectDisplayText>>,
+    mut display_texts: Query<
+        &mut Text,
+        (With<SelectDisplayText>, Without<SelectOptionLabelText>),
+    >,
+    mut option_rows: Query<(&SelectOwner, &mut SelectOptionItem, &Children)>,
+    mut option_labels: Query<
+        &mut Text,
+        (With<SelectOptionLabelText>, Without<SelectDisplayText>),
+    >,
 ) {
-    for (select, children) in selects.iter_mut() {
+    for (select_entity, select, children) in selects.iter_mut() {
         // Update dropdown visibility
         for child in children.iter() {
             if let Ok(mut vis) = dropdowns.get_mut(child) {
@@ -774,7 +1084,7 @@ fn select_dropdown_sync_system(
         }
 
         // Update displayed text
-        let placeholder = select.label.as_deref().unwrap_or("Select");
+        let placeholder = select.label.as_deref().unwrap_or("");
 
         let display = select
             .selected_option()
@@ -784,6 +1094,27 @@ fn select_dropdown_sync_system(
         for child in children.iter() {
             if let Ok(mut text) = display_texts.get_mut(child) {
                 *text = Text::new(display);
+            }
+        }
+
+        // Update option row labels in the dropdown.
+        for (owner, mut option_item, row_children) in option_rows.iter_mut() {
+            if owner.0 != select_entity {
+                continue;
+            }
+
+            let Some(opt) = select.options.get(option_item.index) else {
+                continue;
+            };
+
+            if option_item.label != opt.label {
+                option_item.label = opt.label.clone();
+            }
+
+            for child in row_children.iter() {
+                if let Ok(mut text) = option_labels.get_mut(child) {
+                    *text = Text::new(opt.label.clone());
+                }
             }
         }
     }
@@ -879,11 +1210,14 @@ impl SpawnSelectChild for ChildSpawnerCommands<'_> {
         // Clone options for building the dropdown list
         let options = builder.select.options.clone();
         let selected_index = builder.select.selected_index;
-        let placeholder = builder
-            .select
-            .label
-            .clone()
-            .unwrap_or_else(|| "Select".to_string());
+        let placeholder = if builder.select.label.is_some() {
+            builder.select.label.clone().unwrap_or_default()
+        } else if builder.localization.label_key.is_some() {
+            // Let `select_localization_system` resolve the placeholder without flashing a hard-coded string.
+            String::new()
+        } else {
+            "Select".to_string()
+        };
 
         let mut select_entity_commands = self.spawn(builder.build(theme));
         let select_entity = select_entity_commands.id();

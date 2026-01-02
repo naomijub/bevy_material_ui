@@ -45,7 +45,9 @@ pub fn spawn_app_bar_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.app_bar.title",
                 "App Bars",
+                "showcase.section.app_bar.description",
                 "Top and Bottom app bars for navigation and actions",
             );
 

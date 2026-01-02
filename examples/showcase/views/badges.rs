@@ -22,7 +22,9 @@ pub fn spawn_badges_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.badges.title",
                 "Badges",
+                "showcase.section.badges.description",
                 "Notification indicators for counts and status",
             );
             section

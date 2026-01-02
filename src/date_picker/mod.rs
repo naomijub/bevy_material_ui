@@ -4,9 +4,19 @@
 //! Supports single date or date range selection with calendar and text input modes.
 
 use bevy::prelude::*;
+use bevy::ui::FocusPolicy;
 
 use crate::theme::MaterialTheme;
+use crate::i18n::{MaterialI18n, MaterialLanguage, MaterialLanguageOverride};
 use crate::icons::material_icon_names;
+use crate::locale::{
+    date_input_pattern_for_locale, DateFieldOrder, DateInputPattern, MaterialLocale,
+    MaterialLocaleOverride,
+};
+use crate::text_field::{
+    spawn_text_field_control_with, MaterialTextField, TextFieldBuilder, TextFieldFormatter,
+    TextFieldChangeEvent,
+};
 use crate::tokens::{CornerRadius, Spacing};
 
 mod calendar;
@@ -31,6 +41,7 @@ impl Plugin for DatePickerPlugin {
             .add_systems(
                 Update,
                 (
+                    date_picker_localization_system,
                     date_picker_visibility_system,
                     date_picker_keyboard_dismiss_system,
                     date_picker_mode_toggle_system,
@@ -38,6 +49,7 @@ impl Plugin for DatePickerPlugin {
                     date_picker_year_selector_toggle_system,
                     date_picker_year_selection_system,
                     date_picker_day_selection_system,
+                    date_picker_text_input_system,
                     date_picker_action_system,
                 ),
             )
@@ -50,6 +62,105 @@ impl Plugin for DatePickerPlugin {
                     date_picker_theme_system,
                 ),
             );
+    }
+}
+
+// ============================================================================
+// Localization
+// ============================================================================
+
+/// Optional i18n bindings for a `MaterialDatePicker`.
+#[derive(Component, Debug, Default, Clone, PartialEq, Eq)]
+pub struct DatePickerLocalization {
+    pub title_key: Option<String>,
+}
+
+impl DatePickerLocalization {
+    pub fn title_key(mut self, key: impl Into<String>) -> Self {
+        self.title_key = Some(key.into());
+        self
+    }
+}
+
+#[derive(Component, Debug, Clone)]
+struct DatePickerLocalizationState {
+    last_revision: u64,
+    last_language: String,
+}
+
+fn resolve_language_tag(
+    mut entity: Entity,
+    child_of: &Query<&ChildOf>,
+    overrides: &Query<&MaterialLanguageOverride>,
+    language: &MaterialLanguage,
+) -> String {
+    if let Ok(ov) = overrides.get(entity) {
+        return ov.tag.clone();
+    }
+
+    while let Ok(parent) = child_of.get(entity) {
+        entity = parent.parent();
+        if let Ok(ov) = overrides.get(entity) {
+            return ov.tag.clone();
+        }
+    }
+
+    language.tag.clone()
+}
+
+fn date_picker_localization_system(
+    mut commands: Commands,
+    i18n: Option<Res<MaterialI18n>>,
+    language: Option<Res<MaterialLanguage>>,
+    child_of: Query<&ChildOf>,
+    overrides: Query<&MaterialLanguageOverride>,
+    mut pickers: Query<
+        (
+            Entity,
+            &DatePickerLocalization,
+            &mut MaterialDatePicker,
+            Option<&mut DatePickerLocalizationState>,
+        ),
+        With<MaterialDatePicker>,
+    >,
+) {
+    let (Some(i18n), Some(language)) = (i18n, language) else {
+        return;
+    };
+
+    let global_revision = i18n.revision();
+
+    for (entity, loc, mut picker, state) in pickers.iter_mut() {
+        if loc.title_key.is_none() {
+            continue;
+        }
+
+        let resolved_language = resolve_language_tag(entity, &child_of, &overrides, &language);
+
+        let needs_update = match &state {
+            Some(s) => s.last_revision != global_revision || s.last_language != resolved_language,
+            None => true,
+        };
+
+        if !needs_update {
+            continue;
+        }
+
+        if let Some(key) = &loc.title_key {
+            if let Some(value) = i18n.translate(&resolved_language, key) {
+                picker.title = value.to_string();
+            }
+        }
+
+        if let Some(mut state) = state {
+            state.last_revision = global_revision;
+            state.last_language = resolved_language;
+        } else {
+            commands.entity(entity).insert(DatePickerLocalizationState {
+                last_revision: global_revision,
+                last_language: resolved_language,
+            });
+        }
     }
 }
 
@@ -131,6 +242,7 @@ impl std::fmt::Debug for MaterialDatePicker {
 #[derive(Debug, Clone)]
 pub struct DatePickerBuilder {
     title: String,
+    localization: DatePickerLocalization,
     mode: DatePickerMode,
     input_mode: DateInputMode,
     initial_selection: Option<DateSelection>,
@@ -139,6 +251,7 @@ pub struct DatePickerBuilder {
     dismiss_on_scrim_click: bool,
     dismiss_on_escape: bool,
     width: Val,
+    locale_override: Option<String>,
 }
 
 impl Default for DatePickerBuilder {
@@ -151,6 +264,7 @@ impl DatePickerBuilder {
     pub fn new() -> Self {
         Self {
             title: "Select date".to_string(),
+            localization: DatePickerLocalization::default(),
             mode: DatePickerMode::Single,
             input_mode: DateInputMode::Calendar,
             initial_selection: None,
@@ -159,11 +273,19 @@ impl DatePickerBuilder {
             dismiss_on_scrim_click: true,
             dismiss_on_escape: true,
             width: Val::Px(360.0),
+            locale_override: None,
         }
     }
 
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = title.into();
+        self
+    }
+
+    /// Set title from an i18n key.
+    pub fn title_key(mut self, key: impl Into<String>) -> Self {
+        self.title.clear();
+        self.localization = self.localization.title_key(key);
         self
     }
 
@@ -216,6 +338,15 @@ impl DatePickerBuilder {
 
     pub fn dismiss_on_escape(mut self, enabled: bool) -> Self {
         self.dismiss_on_escape = enabled;
+        self
+    }
+
+    /// Override the locale for this date picker instance.
+    ///
+    /// This is applied by attaching a `MaterialLocaleOverride` to the date picker root entity.
+    /// If not set, the picker uses the global `MaterialLocale` resource.
+    pub fn locale(mut self, tag: impl Into<String>) -> Self {
+        self.locale_override = Some(tag.into());
         self
     }
 
@@ -348,6 +479,14 @@ struct DatePickerMonthLabel {
 #[derive(Component)]
 struct DatePickerTextInputValue {
     picker: Entity,
+    kind: DatePickerTextInputKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DatePickerTextInputKind {
+    Single,
+    RangeStart,
+    RangeEnd,
 }
 
 #[derive(Component)]
@@ -929,6 +1068,13 @@ fn date_picker_action_system(
             
             if action.is_confirm {
                 if let Some(selection) = picker.selector.selection() {
+                    let is_complete = match &selection {
+                        DateSelection::Single(_) => true,
+                        DateSelection::Range { end, .. } => end.is_some(),
+                    };
+                    if !is_complete {
+                        continue;
+                    }
                     picker.open = false;
                     submit_events.write(DatePickerSubmitEvent {
                         entity: action.picker,
@@ -945,15 +1091,261 @@ fn date_picker_action_system(
     }
 }
 
+fn resolve_date_input_pattern(
+    picker_entity: Entity,
+    locale: &MaterialLocale,
+    overrides: &Query<&MaterialLocaleOverride>,
+) -> DateInputPattern {
+    if let Ok(override_locale) = overrides.get(picker_entity) {
+        return date_input_pattern_for_locale(&override_locale.tag);
+    }
+
+    date_input_pattern_for_locale(&locale.tag)
+}
+
+fn try_parse_complete_date(input: &str, pattern: DateInputPattern) -> Option<Date> {
+    if input.is_empty() {
+        return None;
+    }
+    if input.len() != pattern.formatted_len() {
+        return None;
+    }
+    let (year, month, day) = pattern.try_parse_complete(input)?;
+    let date = Date::new(year, month, day);
+    date.is_valid().then_some(date)
+}
+
+fn format_date_for_pattern(date: Date, pattern: DateInputPattern) -> String {
+    let sep = pattern.separator;
+    match pattern.order {
+        DateFieldOrder::Mdy => {
+            format!("{:02}{}{:02}{}{:04}", date.month, sep, date.day, sep, date.year)
+        }
+        DateFieldOrder::Dmy => {
+            format!("{:02}{}{:02}{}{:04}", date.day, sep, date.month, sep, date.year)
+        }
+        DateFieldOrder::Ymd => {
+            format!("{:04}{}{:02}{}{:02}", date.year, sep, date.month, sep, date.day)
+        }
+    }
+}
+
+fn date_picker_text_input_system(
+    mut pickers: Query<&mut MaterialDatePicker>,
+    locale: Res<MaterialLocale>,
+    locale_overrides: Query<&MaterialLocaleOverride>,
+    mut fields: ParamSet<(
+        Query<(Entity, &DatePickerTextInputValue, &MaterialTextField)>,
+        Query<(Entity, &DatePickerTextInputValue, &mut MaterialTextField)>,
+    )>,
+    mut change_events: MessageReader<TextFieldChangeEvent>,
+) {
+    for ev in change_events.read() {
+        let (picker_entity, kind) = {
+            let mut fields_mut = fields.p1();
+            let Ok((_, marker, _)) = fields_mut.get_mut(ev.entity) else {
+                continue;
+            };
+            (marker.picker, marker.kind)
+        };
+
+        let Ok(mut picker) = pickers.get_mut(picker_entity) else {
+            continue;
+        };
+
+        if !picker.open || picker.input_mode != DateInputMode::Text {
+            continue;
+        }
+
+        let pattern = resolve_date_input_pattern(picker_entity, &locale, &locale_overrides);
+
+        // Note: delimiter insertion + invalid-format errors are handled by the
+        // `TextFieldFormatter::DatePattern(...)` formatter on the field.
+
+        match picker.mode {
+            DatePickerMode::Single => {
+                if kind != DatePickerTextInputKind::Single {
+                    continue;
+                }
+
+                let mut fields_mut = fields.p1();
+                let Ok((_, _, mut field)) = fields_mut.get_mut(ev.entity) else {
+                    continue;
+                };
+
+                // While incomplete, keep selection cleared (Android "incomplete selection").
+                if field.value.is_empty() || field.value.len() < pattern.formatted_len() {
+                    picker.selector.clear();
+                    continue;
+                }
+
+                let Some(date) = try_parse_complete_date(&field.value, pattern) else {
+                    picker.selector.clear();
+                    continue;
+                };
+
+                if !picker.constraints.validator.is_valid(date) {
+                    field.error = true;
+                    field.error_text = Some("Date is outside allowed range".to_string());
+                    picker.selector.clear();
+                    continue;
+                }
+
+                field.error = false;
+                field.error_text = None;
+
+                let selection = DateSelection::Single(date);
+                if picker.selector.selection().as_ref() != Some(&selection) {
+                    picker.selector.set_selection(selection);
+                }
+                picker.display_month = Month::new(date.year, date.month);
+                picker.showing_years = false;
+            }
+            DatePickerMode::Range => {
+                // For range mode, recompute based on both fields for this picker.
+                // (Android validates only once each field is complete.)
+                let mut start_entity: Option<Entity> = None;
+                let mut end_entity: Option<Entity> = None;
+                let mut start_value: Option<String> = None;
+                let mut end_value: Option<String> = None;
+
+                let fields_ro = fields.p0();
+                for (entity, m, f) in fields_ro.iter() {
+                    if m.picker != picker_entity {
+                        continue;
+                    }
+                    match m.kind {
+                        DatePickerTextInputKind::RangeStart => {
+                            start_entity = Some(entity);
+                            start_value = Some(f.value.clone());
+                        }
+                        DatePickerTextInputKind::RangeEnd => {
+                            end_entity = Some(entity);
+                            end_value = Some(f.value.clone());
+                        }
+                        DatePickerTextInputKind::Single => {}
+                    }
+                }
+
+                let (Some(start_entity), Some(end_entity), Some(start_value), Some(end_value)) =
+                    (start_entity, end_entity, start_value, end_value)
+                else {
+                    continue;
+                };
+
+                let start_complete = start_value.len() >= pattern.formatted_len();
+                let end_complete = end_value.len() >= pattern.formatted_len();
+
+                // While incomplete, clear errors (do not flash errors while typing).
+                {
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut start_field)) = fields_mut.get_mut(start_entity) {
+                        if start_field.value.is_empty() || !start_complete {
+                            start_field.error = false;
+                            start_field.error_text = None;
+                        }
+                    }
+                }
+                {
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut end_field)) = fields_mut.get_mut(end_entity) {
+                        if end_field.value.is_empty() || !end_complete {
+                            end_field.error = false;
+                            end_field.error_text = None;
+                        }
+                    }
+                }
+
+                // Do not allow submission until both are complete and valid.
+                if !(start_complete && end_complete) {
+                    picker.selector.clear();
+                    continue;
+                }
+
+                let start_date = try_parse_complete_date(&start_value, pattern);
+                let end_date = try_parse_complete_date(&end_value, pattern);
+
+                let (Some(start_date), Some(end_date)) = (start_date, end_date) else {
+                    picker.selector.clear();
+                    continue;
+                };
+
+                if !picker.constraints.validator.is_valid(start_date)
+                    || !picker.constraints.validator.is_valid(end_date)
+                {
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut start_field)) = fields_mut.get_mut(start_entity) {
+                        start_field.error = true;
+                        start_field.error_text = Some("Date is outside allowed range".to_string());
+                    }
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut end_field)) = fields_mut.get_mut(end_entity) {
+                        end_field.error = true;
+                        end_field.error_text = Some("Date is outside allowed range".to_string());
+                    }
+                    picker.selector.clear();
+                    continue;
+                }
+
+                if end_date < start_date {
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut start_field)) = fields_mut.get_mut(start_entity) {
+                        start_field.error = true;
+                        start_field.error_text = Some("Invalid range".to_string());
+                    }
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut end_field)) = fields_mut.get_mut(end_entity) {
+                        end_field.error = true;
+                        // Android uses a single space to show an error outline without text.
+                        end_field.error_text = Some(" ".to_string());
+                    }
+                    picker.selector.clear();
+                    continue;
+                }
+
+                {
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut start_field)) = fields_mut.get_mut(start_entity) {
+                        start_field.error = false;
+                        start_field.error_text = None;
+                    }
+                }
+                {
+                    let mut fields_mut = fields.p1();
+                    if let Ok((_, _, mut end_field)) = fields_mut.get_mut(end_entity) {
+                        end_field.error = false;
+                        end_field.error_text = None;
+                    }
+                }
+
+                picker.selector.set_selection(DateSelection::Range {
+                    start: start_date,
+                    end: Some(end_date),
+                });
+                picker.display_month = Month::new(start_date.year, start_date.month);
+                picker.showing_years = false;
+            }
+        }
+    }
+}
+
 fn date_picker_render_system(
-    pickers: Query<(Entity, &MaterialDatePicker), Changed<MaterialDatePicker>>,
+    mut pickers: ParamSet<(
+        Query<(Entity, &MaterialDatePicker), Changed<MaterialDatePicker>>,
+        Query<(Entity, &MaterialDatePicker)>,
+    )>,
     mut day_cells: Query<(&DatePickerDayCell, &mut BackgroundColor, &Children)>,
     mut texts: Query<&mut TextColor>,
     mut text_nodes: Query<(
         &mut Text,
         Option<&DatePickerLabel>,
         Option<&DatePickerMonthLabel>,
-        Option<&DatePickerTextInputValue>,
+    )>,
+    mut input_fields: Query<(
+        &DatePickerTextInputValue,
+        &mut MaterialTextField,
+        &mut TextFieldFormatter,
+        &mut crate::text_field::TextFieldFormatState,
     )>,
     mut toggle_icons: Query<(
         &mut crate::icons::svg::SvgIcon,
@@ -961,12 +1353,96 @@ fn date_picker_render_system(
         Option<&DatePickerYearToggleIcon>,
     )>,
     theme: Res<MaterialTheme>,
+    locale: Res<MaterialLocale>,
+    locale_overrides: Query<&MaterialLocaleOverride>,
 ) {
-    // Update calendar UI based on picker state changes
-    for (picker_entity, picker) in pickers.iter() {
+    let locale_changed = locale.is_changed();
+
+    if locale_changed {
+        for (picker_entity, picker) in pickers.p1().iter() {
+            if !picker.open {
+                continue;
+            }
+
+            let pattern = resolve_date_input_pattern(picker_entity, &locale, &locale_overrides);
+            let selection = picker.selector.selection();
+
+            let single_text_value = match selection.as_ref() {
+                Some(DateSelection::Single(date)) => format_date_for_pattern(*date, pattern),
+                _ => String::new(),
+            };
+
+            let (range_start_text_value, range_end_text_value) = match selection.as_ref() {
+                Some(DateSelection::Range { start, end }) => (
+                    format_date_for_pattern(*start, pattern),
+                    end.map(|e| format_date_for_pattern(e, pattern)).unwrap_or_default(),
+                ),
+                _ => (String::new(), String::new()),
+            };
+
+            let hint = pattern.hint();
+            let desired_formatter = TextFieldFormatter::DatePattern(pattern);
+
+            for (marker, mut field, mut formatter, mut format_state) in input_fields.iter_mut() {
+                if marker.picker != picker_entity {
+                    continue;
+                }
+
+                if *formatter != desired_formatter {
+                    *formatter = desired_formatter;
+
+                    if format_state.format_error {
+                        field.error = false;
+                        field.error_text = None;
+                        format_state.format_error = false;
+                    }
+                }
+
+                if field.placeholder != hint {
+                    field.placeholder = hint.clone();
+                }
+                if field.max_length != Some(pattern.formatted_len()) {
+                    field.max_length = Some(pattern.formatted_len());
+                }
+
+                if !field.error {
+                    field.supporting_text = Some(match marker.kind {
+                        DatePickerTextInputKind::Single => {
+                            format!("Enter date in {} format", hint)
+                        }
+                        DatePickerTextInputKind::RangeStart | DatePickerTextInputKind::RangeEnd => {
+                            hint.clone()
+                        }
+                    });
+                }
+
+                if field.focused {
+                    continue;
+                }
+
+                let desired = match marker.kind {
+                    DatePickerTextInputKind::Single => &single_text_value,
+                    DatePickerTextInputKind::RangeStart => &range_start_text_value,
+                    DatePickerTextInputKind::RangeEnd => &range_end_text_value,
+                };
+
+                if field.value != *desired {
+                    field.value = desired.clone();
+                    field.has_content = !field.value.is_empty();
+                }
+            }
+        }
+
+        return;
+    }
+
+    // Default path: update only pickers that changed.
+    for (picker_entity, picker) in pickers.p0().iter() {
         if !picker.open {
             continue;
         }
+
+        let pattern = resolve_date_input_pattern(picker_entity, &locale, &locale_overrides);
         
         let selection = picker.selector.selection();
 
@@ -979,14 +1455,20 @@ fn date_picker_render_system(
         };
         // Update all text nodes tied to this picker
         let month_text = picker.display_month.display_name();
-        let text_value = match selection.as_ref() {
-            Some(DateSelection::Single(date)) => {
-                format!("{:02}/{:02}/{:04}", date.month as u8, date.day, date.year)
-            }
+        let single_text_value = match selection.as_ref() {
+            Some(DateSelection::Single(date)) => format_date_for_pattern(*date, pattern),
             _ => String::new(),
         };
 
-        for (mut text, selection_label, month_label, text_input_value) in text_nodes.iter_mut() {
+        let (range_start_text_value, range_end_text_value) = match selection.as_ref() {
+            Some(DateSelection::Range { start, end }) => (
+                format_date_for_pattern(*start, pattern),
+                end.map(|e| format_date_for_pattern(e, pattern)).unwrap_or_default(),
+            ),
+            _ => (String::new(), String::new()),
+        };
+
+        for (mut text, selection_label, month_label) in text_nodes.iter_mut() {
             if let Some(label) = selection_label {
                 if label.picker == picker_entity {
                     text.0 = selection_text.clone();
@@ -997,10 +1479,62 @@ fn date_picker_render_system(
                     text.0 = month_text.clone();
                 }
             }
-            if let Some(value) = text_input_value {
-                if value.picker == picker_entity {
-                    text.0 = text_value.clone();
+        }
+
+        let hint = pattern.hint();
+        let desired_formatter = TextFieldFormatter::DatePattern(pattern);
+
+        for (marker, mut field, mut formatter, mut format_state) in input_fields.iter_mut() {
+            if marker.picker != picker_entity {
+                continue;
+            }
+
+            if *formatter != desired_formatter {
+                *formatter = desired_formatter;
+
+                // If the previous error was from the formatter, clear it when the pattern changes
+                // so we don't show a stale hint.
+                if format_state.format_error {
+                    field.error = false;
+                    field.error_text = None;
+                    format_state.format_error = false;
                 }
+            }
+
+            if field.placeholder != hint {
+                field.placeholder = hint.clone();
+            }
+            if field.max_length != Some(pattern.formatted_len()) {
+                field.max_length = Some(pattern.formatted_len());
+            }
+
+            if !field.error {
+                // Only update helper text when not showing an error.
+                field.supporting_text = Some(match marker.kind {
+                    DatePickerTextInputKind::Single => {
+                        format!("Enter date in {} format", hint)
+                    }
+                    DatePickerTextInputKind::RangeStart | DatePickerTextInputKind::RangeEnd => {
+                        hint.clone()
+                    }
+                });
+            }
+
+            // Only overwrite when the picker state changes (this system only runs on Changed),
+            // but don't clobber the field while actively editing.
+            if field.focused {
+                continue;
+            }
+
+            let desired = match marker.kind {
+                DatePickerTextInputKind::Single => &single_text_value,
+                DatePickerTextInputKind::RangeStart => &range_start_text_value,
+                DatePickerTextInputKind::RangeEnd => &range_end_text_value,
+            };
+
+            if field.value != *desired {
+                field.value = desired.clone();
+                field.has_content = !field.value.is_empty();
             }
         }
 
@@ -1188,6 +1722,7 @@ impl SpawnDatePicker for ChildSpawnerCommands<'_> {
         // Create simplified placeholder UI - full implementation in future update
         let mut root = self.spawn((
             picker,
+            builder.localization,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
@@ -1201,8 +1736,14 @@ impl SpawnDatePicker for ChildSpawnerCommands<'_> {
             },
             GlobalZIndex(9999),
         ));
+
+        if let Some(tag) = builder.locale_override.as_deref() {
+            root.insert(MaterialLocaleOverride::new(tag));
+        }
         let entity = root.id();
         
+        let default_pattern = DateInputPattern::new(DateFieldOrder::Mdy, '/');
+
         root.with_children(|root| {
             // Scrim overlay
             root.spawn((
@@ -1227,6 +1768,9 @@ impl SpawnDatePicker for ChildSpawnerCommands<'_> {
                 DatePickerDialog {
                     picker: entity,
                 },
+                // Ensure clicks on the dialog surface don't count as scrim clicks.
+                Interaction::None,
+                FocusPolicy::Block,
                 Node {
                     width,
                     flex_direction: FlexDirection::Column,
@@ -1447,61 +1991,97 @@ impl SpawnDatePicker for ChildSpawnerCommands<'_> {
                             ..default()
                         },
                     )).with_children(|text_area| {
-                        text_area.spawn((
-                            Text::new("MM/DD/YYYY"),
-                            TextFont {
-                                font_size: 16.0,
-                                ..default()
-                            },
-                            TextColor(theme.on_surface_variant),
-                            Node {
-                                margin: UiRect::bottom(Val::Px(Spacing::SMALL)),
-                                ..default()
-                            },
-                        ));
-                        
-                        // Text input field (placeholder - full text input requires text editing support)
-                        text_area.spawn((
-                            Node {
-                                width: Val::Percent(100.0),
-                                height: Val::Px(56.0),
-                                padding: UiRect::all(Val::Px(Spacing::MEDIUM)),
-                                border: UiRect::all(Val::Px(1.0)),
-                                ..default()
-                            },
-                            BackgroundColor(theme.surface_container_highest),
-                            BorderColor::all(theme.outline),
-                            BorderRadius::all(Val::Px(CornerRadius::SMALL)),
-                        )).with_children(|field| {
-                            let date_text = match builder.initial_selection.as_ref() {
-                                Some(DateSelection::Single(date)) => {
-                                    format!("{:02}/{:02}/{:04}", date.month as u8, date.day, date.year)
-                                }
-                                _ => String::new(),
-                            };
-                            
-                            field.spawn((
-                                DatePickerTextInputValue {
-                                    picker: entity,
-                                },
-                                Text::new(date_text),
-                                TextFont {
-                                    font_size: 16.0,
-                                    ..default()
-                                },
-                                TextColor(on_surface),
-                            ));
-                        });
-                        
-                        // Help text
-                        text_area.spawn((
-                            Text::new("Enter date in MM/DD/YYYY format"),
-                            TextFont {
-                                font_size: 12.0,
-                                ..default()
-                            },
-                            TextColor(theme.on_surface_variant),
-                        ));
+                        match builder.mode {
+                            DatePickerMode::Single => {
+                                let date_text = match builder.initial_selection.as_ref() {
+                                    Some(DateSelection::Single(date)) => format!(
+                                        "{:02}/{:02}/{:04}",
+                                        date.month as u8, date.day, date.year
+                                    ),
+                                    Some(DateSelection::Range { start, .. }) => format!(
+                                        "{:02}/{:02}/{:04}",
+                                        start.month as u8, start.day, start.year
+                                    ),
+                                    _ => String::new(),
+                                };
+
+                                spawn_text_field_control_with(
+                                    text_area,
+                                    theme,
+                                    TextFieldBuilder::new()
+                                        .outlined()
+                                        .width(Val::Percent(100.0))
+                                        .date_pattern(default_pattern)
+                                        .value(date_text)
+                                        .supporting_text(format!(
+                                            "Enter date in {} format",
+                                            default_pattern.hint()
+                                        )),
+                                    DatePickerTextInputValue {
+                                        picker: entity,
+                                        kind: DatePickerTextInputKind::Single,
+                                    },
+                                );
+                            }
+                            DatePickerMode::Range => {
+                                let (start_text, end_text) = match builder.initial_selection.as_ref() {
+                                    Some(DateSelection::Range { start, end }) => (
+                                        format!(
+                                            "{:02}/{:02}/{:04}",
+                                            start.month as u8, start.day, start.year
+                                        ),
+                                        end.map(|e| {
+                                            format!(
+                                                "{:02}/{:02}/{:04}",
+                                                e.month as u8, e.day, e.year
+                                            )
+                                        })
+                                        .unwrap_or_default(),
+                                    ),
+                                    _ => (String::new(), String::new()),
+                                };
+
+                                text_area
+                                    .spawn(Node {
+                                        flex_direction: FlexDirection::Row,
+                                        column_gap: Val::Px(Spacing::MEDIUM),
+                                        ..default()
+                                    })
+                                    .with_children(|row| {
+                                        spawn_text_field_control_with(
+                                            row,
+                                            theme,
+                                            TextFieldBuilder::new()
+                                                .label("Start")
+                                                .outlined()
+                                                .width(Val::Percent(50.0))
+                                                .date_pattern(default_pattern)
+                                                .value(start_text)
+                                                .supporting_text(default_pattern.hint()),
+                                            DatePickerTextInputValue {
+                                                picker: entity,
+                                                kind: DatePickerTextInputKind::RangeStart,
+                                            },
+                                        );
+
+                                        spawn_text_field_control_with(
+                                            row,
+                                            theme,
+                                            TextFieldBuilder::new()
+                                                .label("End")
+                                                .outlined()
+                                                .width(Val::Percent(50.0))
+                                                .date_pattern(default_pattern)
+                                                .value(end_text)
+                                                .supporting_text(default_pattern.hint()),
+                                            DatePickerTextInputValue {
+                                                picker: entity,
+                                                kind: DatePickerTextInputKind::RangeEnd,
+                                            },
+                                        );
+                                    });
+                            }
+                        }
                     });
                 
                 // Year selector view

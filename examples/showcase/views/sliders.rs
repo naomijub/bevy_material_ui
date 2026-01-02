@@ -18,7 +18,9 @@ pub fn spawn_sliders_section(parent: &mut ChildSpawnerCommands, theme: &Material
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.sliders.title",
                 "Sliders",
+                "showcase.section.sliders.description",
                 "Select values from a range - Continuous and Discrete with optional ticks",
             );
 

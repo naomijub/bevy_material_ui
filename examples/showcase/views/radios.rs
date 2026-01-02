@@ -22,7 +22,9 @@ pub fn spawn_radios_section(parent: &mut ChildSpawnerCommands, theme: &MaterialT
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.radio_buttons.title",
                 "Radio Buttons",
+                "showcase.section.radio_buttons.description",
                 "Single selection within a group - only one can be selected",
             );
 

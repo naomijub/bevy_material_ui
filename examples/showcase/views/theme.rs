@@ -23,7 +23,9 @@ pub fn spawn_theme_section(
             spawn_section_header(
                 section,
                 theme,
+                "showcase.section.theme_colors.title",
                 "Theme Colors",
+                "showcase.section.theme_colors.description",
                 "Material Design 3 color scheme with dynamic color support",
             );
 
