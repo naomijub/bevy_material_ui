@@ -5,6 +5,7 @@
 ### Breaking Changes
 - **Text Field API**: The trait method `spawn_text_field_with` has been removed. Use the standalone function `spawn_text_field_control_with` instead.
   - **Migration**: See [docs/MIGRATION_v0.2.4.md](docs/MIGRATION_v0.2.4.md) for detailed migration steps
+- **Color Palette Generation**: Primary palette now uses `max(48.0, seed_chroma)` instead of fixed `48.0`, preserving highly chromatic seed colors (>48 chroma) while maintaining MD3's minimum vibrancy threshold. This may produce different primary colors for highly saturated seeds.
 
 ### Code Quality & Cleanup
 - **Removed Legacy Code**: Deleted unused internal HCT implementation files (hct.rs, math.rs) totaling ~1,051 lines - now exclusively using external `hct-cam16` crate

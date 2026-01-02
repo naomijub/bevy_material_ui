@@ -19,6 +19,30 @@ This guide helps you migrate your code from bevy_material_ui v0.2.3 to v0.2.4.
 
 **Why**: This was an internal implementation detail that leaked into the public API. The standalone function provides cleaner, more flexible usage.
 
+### Color Palette Generation
+
+**What Changed**: Primary color palette generation now preserves highly chromatic seed colors instead of clamping all seeds to fixed chroma.
+
+**Technical Details**:
+- **Before**: `primary: TonalPalette::new(hue, 48.0)` - always used 48.0 chroma
+- **After**: `primary: TonalPalette::new(hue, chroma.max(48.0))` - uses seed chroma if > 48.0
+
+**Impact**: 
+- Seeds with chroma ≤ 48: **No change** (still use 48.0)
+- Seeds with chroma > 48: **More vibrant** primary colors that better match the seed
+
+**Example**:
+```rust
+// A highly saturated seed color (chroma = 90)
+let vivid_red = Color::srgb(1.0, 0.0, 0.0);
+let palette = CorePalette::from_bevy_color(vivid_red);
+
+// v0.2.3: Primary palette had chroma = 48.0 (desaturated from seed)
+// v0.2.4: Primary palette has chroma = 90.0 (preserves seed vibrancy)
+```
+
+**Migration**: If your app relies on specific color values, test with your seed colors. Most apps won't notice the difference, but highly saturated seeds will produce more vibrant themes.
+
 #### Migration Steps
 
 **Before (v0.2.3):**
