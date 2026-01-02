@@ -55,7 +55,21 @@
     "showcase.nav.translations": "Übersetzungen",
 
     "showcase.section.buttons.title": "Buttons",
-    "showcase.section.buttons.description": "MD3-Buttons mit 5 Varianten: Filled, Outlined, Text, Elevated und Tonal",
+    "showcase.section.buttons.description": "MD3-Buttons mit 5 Varianten: Gefüllt, Umrandet, Text, Erhöht und Tonal",
+    
+    "showcase.buttons.group_title": "Button-Gruppen",
+    "showcase.buttons.variant.filled": "Gefüllt",
+    "showcase.buttons.variant.outlined": "Umrandet",
+    "showcase.buttons.variant.text": "Text",
+    "showcase.buttons.variant.elevated": "Erhöht",
+    "showcase.buttons.variant.tonal": "Tonal",
+    "showcase.buttons.period.day": "Tag",
+    "showcase.buttons.period.week": "Woche",
+    "showcase.buttons.period.month": "Monat",
+    "showcase.buttons.priority.low": "Niedrig",
+    "showcase.buttons.priority.med": "Mittel",
+    "showcase.buttons.priority.high": "Hoch",
+    
     "showcase.section.checkboxes.title": "Kontrollkästchen",
     "showcase.section.checkboxes.description": "Auswahl per visuellem Häkchen umschalten",
     "showcase.section.switches.title": "Schalter",

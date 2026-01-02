@@ -56,6 +56,20 @@
 
     "showcase.section.buttons.title": "按钮",
     "showcase.section.buttons.description": "MD3 按钮（5 种变体）：填充、描边、文本、抬高和强调色",
+    
+    "showcase.buttons.group_title": "按钮组",
+    "showcase.buttons.variant.filled": "填充",
+    "showcase.buttons.variant.outlined": "描边",
+    "showcase.buttons.variant.text": "文本",
+    "showcase.buttons.variant.elevated": "抬高",
+    "showcase.buttons.variant.tonal": "色调",
+    "showcase.buttons.period.day": "日",
+    "showcase.buttons.period.week": "周",
+    "showcase.buttons.period.month": "月",
+    "showcase.buttons.priority.low": "低",
+    "showcase.buttons.priority.med": "中",
+    "showcase.buttons.priority.high": "高",
+    
     "showcase.section.checkboxes.title": "复选框",
     "showcase.section.checkboxes.description": "切换选择并显示勾选反馈",
     "showcase.section.switches.title": "开关",

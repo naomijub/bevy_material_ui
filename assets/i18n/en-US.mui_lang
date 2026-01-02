@@ -56,6 +56,20 @@
 
     "showcase.section.buttons.title": "Buttons",
     "showcase.section.buttons.description": "MD3 buttons with 5 variants: Filled, Outlined, Text, Elevated, and Tonal",
+    
+    "showcase.buttons.group_title": "Button Groups",
+    "showcase.buttons.variant.filled": "Filled",
+    "showcase.buttons.variant.outlined": "Outlined",
+    "showcase.buttons.variant.text": "Text",
+    "showcase.buttons.variant.elevated": "Elevated",
+    "showcase.buttons.variant.tonal": "Tonal",
+    "showcase.buttons.period.day": "Day",
+    "showcase.buttons.period.week": "Week",
+    "showcase.buttons.period.month": "Month",
+    "showcase.buttons.priority.low": "Low",
+    "showcase.buttons.priority.med": "Med",
+    "showcase.buttons.priority.high": "High",
+    
     "showcase.section.checkboxes.title": "Checkboxes",
     "showcase.section.checkboxes.description": "Toggle selection with visual checkmark feedback",
     "showcase.section.switches.title": "Switches",

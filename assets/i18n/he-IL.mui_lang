@@ -56,6 +56,20 @@
 
     "showcase.section.buttons.title": "כפתורים",
     "showcase.section.buttons.description": "כפתורי MD3 עם 5 וריאציות: מלא, מסגרת, טקסט, מוגבה וגוון",
+    
+    "showcase.buttons.group_title": "קבוצות כפתורים",
+    "showcase.buttons.variant.filled": "מלא",
+    "showcase.buttons.variant.outlined": "מסגרת",
+    "showcase.buttons.variant.text": "טקסט",
+    "showcase.buttons.variant.elevated": "מוגבה",
+    "showcase.buttons.variant.tonal": "גוון",
+    "showcase.buttons.period.day": "יום",
+    "showcase.buttons.period.week": "שבוע",
+    "showcase.buttons.period.month": "חודש",
+    "showcase.buttons.priority.low": "נמוך",
+    "showcase.buttons.priority.med": "בינוני",
+    "showcase.buttons.priority.high": "גבוה",
+    
     "showcase.section.checkboxes.title": "תיבות סימון",
     "showcase.section.checkboxes.description": "החלפת בחירה עם משוב סימון",
     "showcase.section.switches.title": "מתגים",

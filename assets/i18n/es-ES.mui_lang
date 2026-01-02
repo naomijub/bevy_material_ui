@@ -56,6 +56,20 @@
 
     "showcase.section.buttons.title": "Botones",
     "showcase.section.buttons.description": "Botones MD3 con 5 variantes: Relleno, Contorno, Texto, Elevado y Tonal",
+    
+    "showcase.buttons.group_title": "Grupos de botones",
+    "showcase.buttons.variant.filled": "Relleno",
+    "showcase.buttons.variant.outlined": "Contorno",
+    "showcase.buttons.variant.text": "Texto",
+    "showcase.buttons.variant.elevated": "Elevado",
+    "showcase.buttons.variant.tonal": "Tonal",
+    "showcase.buttons.period.day": "Día",
+    "showcase.buttons.period.week": "Semana",
+    "showcase.buttons.period.month": "Mes",
+    "showcase.buttons.priority.low": "Baja",
+    "showcase.buttons.priority.med": "Media",
+    "showcase.buttons.priority.high": "Alta",
+    
     "showcase.section.checkboxes.title": "Casillas",
     "showcase.section.checkboxes.description": "Alterna la selección con una marca de verificación",
     "showcase.section.switches.title": "Interruptores",

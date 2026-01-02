@@ -32,15 +32,16 @@ pub fn spawn_buttons_section(parent: &mut ChildSpawnerCommands, theme: &Material
                     ..default()
                 })
                 .with_children(|row| {
-                    spawn_interactive_button(row, theme, "Filled", ButtonVariant::Filled);
-                    spawn_interactive_button(row, theme, "Outlined", ButtonVariant::Outlined);
-                    spawn_interactive_button(row, theme, "Text", ButtonVariant::Text);
-                    spawn_interactive_button(row, theme, "Elevated", ButtonVariant::Elevated);
-                    spawn_interactive_button(row, theme, "Tonal", ButtonVariant::FilledTonal);
+                    spawn_interactive_button(row, theme, "showcase.buttons.variant.filled", "Filled", ButtonVariant::Filled);
+                    spawn_interactive_button(row, theme, "showcase.buttons.variant.outlined", "Outlined", ButtonVariant::Outlined);
+                    spawn_interactive_button(row, theme, "showcase.buttons.variant.text", "Text", ButtonVariant::Text);
+                    spawn_interactive_button(row, theme, "showcase.buttons.variant.elevated", "Elevated", ButtonVariant::Elevated);
+                    spawn_interactive_button(row, theme, "showcase.buttons.variant.tonal", "Tonal", ButtonVariant::FilledTonal);
                 });
 
             section.spawn((
-                Text::new("Button Groups"),
+                Text::new(""),
+                LocalizedText::new("showcase.buttons.group_title").with_default("Button Groups"),
                 TextFont {
                     font_size: 16.0,
                     ..default()
@@ -50,6 +51,7 @@ pub fn spawn_buttons_section(parent: &mut ChildSpawnerCommands, theme: &Material
                     margin: UiRect::top(Val::Px(8.0)),
                     ..default()
                 },
+                NeedsInternationalFont,
             ));
 
             section
@@ -73,9 +75,9 @@ pub fn spawn_buttons_section(parent: &mut ChildSpawnerCommands, theme: &Material
                         },
                     ))
                     .with_children(|group| {
-                        spawn_toggle_button(group, theme, "Day", true);
-                        spawn_toggle_button(group, theme, "Week", false);
-                        spawn_toggle_button(group, theme, "Month", false);
+                        spawn_toggle_button(group, theme, "showcase.buttons.period.day", "Day", true);
+                        spawn_toggle_button(group, theme, "showcase.buttons.period.week", "Week", false);
+                        spawn_toggle_button(group, theme, "showcase.buttons.period.month", "Month", false);
                     });
 
                     // Vertical segmented (single selection)
@@ -89,9 +91,9 @@ pub fn spawn_buttons_section(parent: &mut ChildSpawnerCommands, theme: &Material
                         },
                     ))
                     .with_children(|group| {
-                        spawn_toggle_button(group, theme, "Low", false);
-                        spawn_toggle_button(group, theme, "Med", true);
-                        spawn_toggle_button(group, theme, "High", false);
+                        spawn_toggle_button(group, theme, "showcase.buttons.priority.low", "Low", false);
+                        spawn_toggle_button(group, theme, "showcase.buttons.priority.med", "Med", true);
+                        spawn_toggle_button(group, theme, "showcase.buttons.priority.high", "High", false);
                     });
                 });
 
@@ -117,10 +119,11 @@ commands.spawn((
 fn spawn_toggle_button(
     parent: &mut ChildSpawnerCommands,
     theme: &MaterialTheme,
-    label: &str,
+    label_key: &str,
+    label_default: &str,
     checked: bool,
 ) {
-    let button = MaterialButton::new(label)
+    let button = MaterialButton::new(label_default)
         .with_variant(ButtonVariant::Outlined)
         .checkable(true)
         .checked(checked);
@@ -148,12 +151,14 @@ fn spawn_toggle_button(
         ))
         .with_children(|btn| {
             btn.spawn((
-                Text::new(label),
+                Text::new(""),
+                LocalizedText::new(label_key).with_default(label_default),
                 TextFont {
                     font_size: 14.0,
                     ..default()
                 },
                 TextColor(text_color),
+                NeedsInternationalFont,
             ));
         });
 }
@@ -161,10 +166,11 @@ fn spawn_toggle_button(
 fn spawn_interactive_button(
     parent: &mut ChildSpawnerCommands,
     theme: &MaterialTheme,
-    label: &str,
+    label_key: &str,
+    label_default: &str,
     variant: ButtonVariant,
 ) {
-    let button = MaterialButton::new(label).with_variant(variant);
+    let button = MaterialButton::new(label_default).with_variant(variant);
     let text_color = button.text_color(theme);
     let bg_color = button.background_color(theme);
     let border_color = button.border_color(theme);
@@ -191,12 +197,14 @@ fn spawn_interactive_button(
         ))
         .with_children(|btn| {
             btn.spawn((
-                Text::new(label),
+                Text::new(""),
+                LocalizedText::new(label_key).with_default(label_default),
                 TextFont {
                     font_size: 14.0,
                     ..default()
                 },
                 TextColor(text_color),
+                NeedsInternationalFont,
             ));
         });
 }

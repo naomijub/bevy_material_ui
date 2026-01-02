@@ -56,6 +56,20 @@
 
     "showcase.section.buttons.title": "ボタン",
     "showcase.section.buttons.description": "Material 3 の5種類のボタン（塗りつぶし、アウトライン、テキスト、エレベーテッド、トーン）",
+    
+    "showcase.buttons.group_title": "ボタングループ",
+    "showcase.buttons.variant.filled": "塗りつぶし",
+    "showcase.buttons.variant.outlined": "アウトライン",
+    "showcase.buttons.variant.text": "テキスト",
+    "showcase.buttons.variant.elevated": "エレベーテッド",
+    "showcase.buttons.variant.tonal": "トーン",
+    "showcase.buttons.period.day": "日",
+    "showcase.buttons.period.week": "週",
+    "showcase.buttons.period.month": "月",
+    "showcase.buttons.priority.low": "低",
+    "showcase.buttons.priority.med": "中",
+    "showcase.buttons.priority.high": "高",
+    
     "showcase.section.checkboxes.title": "チェックボックス",
     "showcase.section.checkboxes.description": "チェックマークで選択を切り替え",
     "showcase.section.switches.title": "スイッチ",
