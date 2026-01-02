@@ -117,6 +117,8 @@ pub(crate) const WHITE_POINT_D65_Z: f64 = 108.883;
 /// Returns Y in [0, 100] range where 100 is reference white
 pub(crate) fn y_from_argb(argb: u32) -> f64 {
     let [r, g, b] = linear_rgb_from_argb(argb);
+    // Scale Y to the [0, 100] range so that Y=100 corresponds to the D65 reference
+    // white (WHITE_POINT_D65_Y) used by Material Design 3's HctSolver.
     100.0 * (SRGB_TO_XYZ[1][0] * r + SRGB_TO_XYZ[1][1] * g + SRGB_TO_XYZ[1][2] * b)
 }
 
