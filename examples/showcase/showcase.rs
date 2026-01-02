@@ -750,25 +750,16 @@ fn load_showcase_i18n_assets_system(mut commands: Commands, asset_server: Res<As
     commands.insert_resource(ShowcaseI18nAssets { handles });
 
     // Load international font.
-    // Try to load Noto Sans; if not found, fall back to Bevy's default.
     let font_path = "fonts/NotoSans-Regular.ttf";
     let font_handle = asset_server.load::<Font>(font_path);
     
-    // We can't check if the asset exists synchronously, so we'll always create the resource.
-    // The font availability will be checked later when it's used.
     commands.insert_resource(ShowcaseFont {
         handle: font_handle,
-        available: false, // Will be updated when first used
+        available: false,
     });
 
-    info!(
-        "Loading international font: {}. If not found, international characters may not display correctly.",
-        font_path
-    );
-    info!(
-        "To add font support: Download Noto Sans from https://fonts.google.com/noto/specimen/Noto+Sans"
-    );
-    info!("Place it at: assets/fonts/NotoSans-Regular.ttf");
+    info!("📝 Loading international font: {}", font_path);
+    info!("   If you see Chinese/Japanese/Hebrew correctly, the font is working!");
 }
 
 fn toggle_language_system(keys: Res<ButtonInput<KeyCode>>, mut language: ResMut<MaterialLanguage>) {
@@ -785,13 +776,14 @@ fn toggle_language_system(keys: Res<ButtonInput<KeyCode>>, mut language: ResMut<
 
 /// Apply international font to text nodes marked with `NeedsInternationalFont`.
 /// 
-/// This system runs once for each marked text node, applying the international font
-/// handle and removing the marker to prevent redundant processing.
+/// This system runs for each marked text node, waiting until the font has loaded
+/// before applying it. Only removes the marker once the font is successfully applied.
 fn apply_international_font_system(
     mut commands: Commands,
     font_resource: Option<Res<ShowcaseFont>>,
     fonts: Res<Assets<Font>>,
     mut query: Query<(Entity, &mut TextFont), With<common::NeedsInternationalFont>>,
+    mut logged: Local<bool>,
 ) {
     let Some(font_resource) = font_resource else {
         return;
@@ -800,12 +792,21 @@ fn apply_international_font_system(
     // Check if the font asset has loaded
     let font_loaded = fonts.get(&font_resource.handle).is_some();
 
+    if !font_loaded {
+        // Font not loaded yet - keep marker and try again next frame
+        return;
+    }
+
+    // Log once when font is successfully loaded
+    if !*logged {
+        let count = query.iter().count();
+        info!("✅ International font loaded! Applying to {} text elements", count);
+        *logged = true;
+    }
+
+    // Font is loaded - apply it to all marked entities
     for (entity, mut text_font) in query.iter_mut() {
-        if font_loaded {
-            // Font is available - apply it
-            text_font.font = font_resource.handle.clone();
-        }
-        // else: Font not loaded yet (or doesn't exist) - keep default font
+        text_font.font = font_resource.handle.clone();
         
         // Remove marker to prevent reprocessing
         commands.entity(entity).remove::<common::NeedsInternationalFont>();
