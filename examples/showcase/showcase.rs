@@ -94,8 +94,9 @@ struct ShowcaseI18nAssets {
 /// but international characters (Chinese, Japanese, Hebrew, etc.) will not render correctly.
 #[derive(Resource, Clone)]
 pub struct ShowcaseFont {
-    pub handle: Handle<Font>,
-    pub available: bool,
+    pub latin: Handle<Font>,
+    pub cjk: Handle<Font>,
+    pub hebrew: Handle<Font>,
 }
 
 #[derive(Resource)]
@@ -749,17 +750,17 @@ fn load_showcase_i18n_assets_system(mut commands: Commands, asset_server: Res<As
 
     commands.insert_resource(ShowcaseI18nAssets { handles });
 
-    // Load international font.
-    let font_path = "fonts/NotoSans-Regular.ttf";
-    let font_handle = asset_server.load::<Font>(font_path);
+    // Load all international fonts.
+    info!("📝 Loading international fonts:");
+    info!("   - NotoSans-Regular.ttf (Latin: English, Spanish, French, German)");
+    info!("   - NotoSansSC-Regular.ttf (CJK: Chinese, Japanese)");
+    info!("   - NotoSerifHebrew-Regular.ttf (Hebrew)");
     
     commands.insert_resource(ShowcaseFont {
-        handle: font_handle,
-        available: false,
+        latin: asset_server.load::<Font>("fonts/NotoSans-Regular.ttf"),
+        cjk: asset_server.load::<Font>("fonts/NotoSansSC-Regular.ttf"),
+        hebrew: asset_server.load::<Font>("fonts/NotoSerifHebrew-Regular.ttf"),
     });
-
-    info!("📝 Loading international font: {}", font_path);
-    info!("   If you see Chinese/Japanese/Hebrew correctly, the font is working!");
 }
 
 fn toggle_language_system(keys: Res<ButtonInput<KeyCode>>, mut language: ResMut<MaterialLanguage>) {
@@ -782,6 +783,7 @@ fn apply_international_font_system(
     mut commands: Commands,
     font_resource: Option<Res<ShowcaseFont>>,
     fonts: Res<Assets<Font>>,
+    language: Res<MaterialLanguage>,
     mut query: Query<(Entity, &mut TextFont), With<common::NeedsInternationalFont>>,
     mut logged: Local<bool>,
 ) {
@@ -789,24 +791,33 @@ fn apply_international_font_system(
         return;
     };
 
-    // Check if the font asset has loaded
-    let font_loaded = fonts.get(&font_resource.handle).is_some();
+    // Check if all fonts are loaded
+    let latin_loaded = fonts.get(&font_resource.latin).is_some();
+    let cjk_loaded = fonts.get(&font_resource.cjk).is_some();
+    let hebrew_loaded = fonts.get(&font_resource.hebrew).is_some();
 
-    if !font_loaded {
-        // Font not loaded yet - keep marker and try again next frame
+    if !latin_loaded || !cjk_loaded || !hebrew_loaded {
+        // Fonts not fully loaded yet - keep markers and try again next frame
         return;
     }
 
-    // Log once when font is successfully loaded
+    // Log once when all fonts are successfully loaded
     if !*logged {
         let count = query.iter().count();
-        info!("✅ International font loaded! Applying to {} text elements", count);
+        info!("✅ All international fonts loaded! Applying to {} text elements", count);
         *logged = true;
     }
 
-    // Font is loaded - apply it to all marked entities
+    // Select font based on current language
+    let font_handle = match language.tag.as_str() {
+        "zh-CN" | "ja-JP" => &font_resource.cjk,
+        "he-IL" => &font_resource.hebrew,
+        _ => &font_resource.latin, // en-US, es-ES, fr-FR, de-DE
+    };
+
+    // Apply appropriate font to all marked entities
     for (entity, mut text_font) in query.iter_mut() {
-        text_font.font = font_resource.handle.clone();
+        text_font.font = font_handle.clone();
         
         // Remove marker to prevent reprocessing
         commands.entity(entity).remove::<common::NeedsInternationalFont>();
