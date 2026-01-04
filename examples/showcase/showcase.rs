@@ -501,6 +501,7 @@ fn translations_validate_new_filename_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn translations_select_change_system(
     mut change_events: MessageReader<SelectChangeEvent>,
     selects: Query<(
@@ -572,6 +573,7 @@ fn translations_select_change_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn translations_create_file_system(
     mut click_events: MessageReader<ButtonClickEvent>,
     create_buttons: Query<(), With<views::TranslationsCreateFileButton>>,
@@ -601,7 +603,7 @@ fn translations_create_file_system(
             continue;
         }
         let dir = translations_assets_dir();
-        let path = dir.join(&file_name);
+        let path = dir.join(file_name);
         if path.exists() {
             continue;
         }
@@ -656,6 +658,7 @@ fn translations_create_file_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn translations_save_file_system(
     mut click_events: MessageReader<ButtonClickEvent>,
     save_buttons: Query<(), With<views::TranslationsSaveFileButton>>,
@@ -933,6 +936,7 @@ impl Command for InsertTestIdIfExists {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn ensure_automation_test_ids_clickables_system(
     selected: Res<SelectedSection>,
     telemetry: Res<ComponentTelemetry>,
@@ -1120,6 +1124,7 @@ fn ensure_automation_test_ids_clickables_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn ensure_automation_test_ids_inputs_system(
     selected: Res<SelectedSection>,
     telemetry: Res<ComponentTelemetry>,
@@ -1277,6 +1282,7 @@ fn ensure_automation_test_ids_inputs_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn ensure_automation_test_ids_overlays_system(
     selected: Res<SelectedSection>,
     telemetry: Res<ComponentTelemetry>,
@@ -1648,6 +1654,7 @@ fn telemetry_snapshot_system(
     );
 }
 
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 fn debug_lists_visibility_system(
     selected: Res<SelectedSection>,
     lists: Query<(Entity, Option<&Children>, Option<&ComputedNode>), With<ListDemoRoot>>,
@@ -1825,10 +1832,10 @@ fn sidebar_scroll_telemetry_system(
 
     telemetry
         .states
-        .insert("sidebar_scroll_y".to_string(), (**pos).y.to_string());
+        .insert("sidebar_scroll_y".to_string(), pos.y.to_string());
     telemetry
         .states
-        .insert("sidebar_scroll_x".to_string(), (**pos).x.to_string());
+        .insert("sidebar_scroll_x".to_string(), pos.x.to_string());
 }
 
 fn main_scroll_telemetry_system(
@@ -1845,10 +1852,10 @@ fn main_scroll_telemetry_system(
 
     telemetry
         .states
-        .insert("main_scroll_y".to_string(), (**pos).y.to_string());
+        .insert("main_scroll_y".to_string(), pos.y.to_string());
     telemetry
         .states
-        .insert("main_scroll_x".to_string(), (**pos).x.to_string());
+        .insert("main_scroll_x".to_string(), pos.x.to_string());
 }
 
 fn progress_demo_animate_system(
@@ -2675,7 +2682,7 @@ fn date_picker_demo_system(
                 Some(DateSelection::Single(date)) => {
                     format!(
                         "{prefix} {}-{:02}-{:02}",
-                        date.year, date.month as u8, date.day
+                        date.year, date.month, date.day
                     )
                 }
                 Some(DateSelection::Range { start, end }) => {
@@ -2683,16 +2690,16 @@ fn date_picker_demo_system(
                         format!(
                             "{prefix} {}-{:02}-{:02} {to_word} {}-{:02}-{:02}",
                             start.year,
-                            start.month as u8,
+                            start.month,
                             start.day,
                             end.year,
-                            end.month as u8,
+                            end.month,
                             end.day
                         )
                     } else {
                         format!(
                             "{prefix} {}-{:02}-{:02} {selecting}",
-                            start.year, start.month as u8, start.day
+                            start.year, start.month, start.day
                         )
                     }
                 }
@@ -2755,6 +2762,7 @@ fn time_picker_demo_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn rebuild_ui_on_theme_change_system(
     mut commands: Commands,
     theme: Res<MaterialTheme>,
@@ -3109,6 +3117,7 @@ fn dialog_demo_open_close_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn update_detail_content(
     mut commands: Commands,
     theme: Res<MaterialTheme>,

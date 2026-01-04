@@ -109,7 +109,7 @@ fn attach_checkbox_child_test_ids(
             if is_checkbox.get(child).is_ok() {
                 commands
                     .entity(child)
-                    .insert_test_id(format!("{base}"), &telemetry);
+                    .insert_test_id(base.to_string(), &telemetry);
             } else if is_text.get(child).is_ok() {
                 commands
                     .entity(child)

@@ -93,6 +93,7 @@ fn setup(mut commands: Commands, theme: Res<MaterialTheme>, telemetry: Res<Telem
         });
 }
 
+#[allow(clippy::type_complexity)]
 fn show_snackbar_on_click_system(
     mut clicks: Query<
         (&Interaction, Option<&ShowActionSnackbarButton>),

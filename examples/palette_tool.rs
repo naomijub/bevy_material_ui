@@ -763,10 +763,8 @@ fn handle_mode_toggle_system(
     mut options: Query<(&ThemeModeOption, &Interaction), Changed<Interaction>>,
 ) {
     for (opt, interaction) in options.iter_mut() {
-        if *interaction == Interaction::Pressed {
-            if state.mode != opt.0 {
-                state.mode = opt.0;
-            }
+        if *interaction == Interaction::Pressed && state.mode != opt.0 {
+            state.mode = opt.0;
         }
     }
 
@@ -786,6 +784,7 @@ fn apply_state_to_theme_system(mut commands: Commands, state: Res<PaletteToolSta
     ));
 }
 
+#[allow(clippy::type_complexity)]
 fn refresh_palette_preview_system(
     state: Res<PaletteToolState>,
     theme: Res<MaterialTheme>,

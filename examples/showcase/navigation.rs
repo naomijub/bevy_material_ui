@@ -66,10 +66,10 @@ pub fn spawn_nav_item(
         });
 }
 
-/// Spawn a navigation item intended for a horizontal (bottom) navigation surface.
-///
-/// Keeps the same `TestId` format as `spawn_nav_item` so automation doesn't need
-/// special-casing.
+// Spawn a navigation item intended for a horizontal (bottom) navigation surface.
+//
+// Keeps the same `TestId` format as `spawn_nav_item` so automation doesn't need
+// special-casing.
 // ============================================================================
 // Navigation Systems
 // ============================================================================

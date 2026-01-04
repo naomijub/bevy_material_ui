@@ -110,7 +110,7 @@ fn date_picker_demo_system(
             DateSelection::Single(date) => {
                 format!(
                     "Result: {}-{:02}-{:02}",
-                    date.year, date.month as u8, date.day
+                    date.year, date.month, date.day
                 )
             }
             DateSelection::Range { start, end } => {
@@ -118,16 +118,16 @@ fn date_picker_demo_system(
                     format!(
                         "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
                         start.year,
-                        start.month as u8,
+                        start.month,
                         start.day,
                         end.year,
-                        end.month as u8,
+                        end.month,
                         end.day
                     )
                 } else {
                     format!(
                         "Result: {}-{:02}-{:02} (selecting...)",
-                        start.year, start.month as u8, start.day
+                        start.year, start.month, start.day
                     )
                 }
             }
@@ -147,7 +147,7 @@ fn date_picker_demo_system(
                 Some(DateSelection::Single(date)) => {
                     format!(
                         "Result: {}-{:02}-{:02}",
-                        date.year, date.month as u8, date.day
+                        date.year, date.month, date.day
                     )
                 }
                 Some(DateSelection::Range { start, end }) => {
@@ -155,16 +155,16 @@ fn date_picker_demo_system(
                         format!(
                             "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
                             start.year,
-                            start.month as u8,
+                            start.month,
                             start.day,
                             end.year,
-                            end.month as u8,
+                            end.month,
                             end.day
                         )
                     } else {
                         format!(
                             "Result: {}-{:02}-{:02} (selecting...)",
-                            start.year, start.month as u8, start.day
+                            start.year, start.month, start.day
                         )
                     }
                 }
