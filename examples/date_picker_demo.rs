@@ -108,21 +108,13 @@ fn date_picker_demo_system(
     for ev in submit.read() {
         let label = match &ev.selection {
             DateSelection::Single(date) => {
-                format!(
-                    "Result: {}-{:02}-{:02}",
-                    date.year, date.month, date.day
-                )
+                format!("Result: {}-{:02}-{:02}", date.year, date.month, date.day)
             }
             DateSelection::Range { start, end } => {
                 if let Some(end) = end {
                     format!(
                         "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
-                        start.year,
-                        start.month,
-                        start.day,
-                        end.year,
-                        end.month,
-                        end.day
+                        start.year, start.month, start.day, end.year, end.month, end.day
                     )
                 } else {
                     format!(
@@ -145,21 +137,13 @@ fn date_picker_demo_system(
         let label = if let Ok(picker) = pickers.get(ev.entity) {
             match picker.selection() {
                 Some(DateSelection::Single(date)) => {
-                    format!(
-                        "Result: {}-{:02}-{:02}",
-                        date.year, date.month, date.day
-                    )
+                    format!("Result: {}-{:02}-{:02}", date.year, date.month, date.day)
                 }
                 Some(DateSelection::Range { start, end }) => {
                     if let Some(end) = end {
                         format!(
                             "Result: {}-{:02}-{:02} to {}-{:02}-{:02}",
-                            start.year,
-                            start.month,
-                            start.day,
-                            end.year,
-                            end.month,
-                            end.day
+                            start.year, start.month, start.day, end.year, end.month, end.day
                         )
                     } else {
                         format!(

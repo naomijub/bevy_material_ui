@@ -62,24 +62,22 @@ fn setup(
                             let headline_key = format!("list_demo.item_{}.headline", i);
                             let supporting_key = format!("list_demo.item_{}.supporting", i);
 
-                            let language_tag = language
-                                .as_ref()
-                                .map(|l| l.tag.as_str())
-                                .unwrap_or("en-US");
+                            let language_tag =
+                                language.as_ref().map(|l| l.tag.as_str()).unwrap_or("en-US");
 
                             let headline = i18n
                                 .as_ref()
                                 .and_then(|i18n| i18n.translate(language_tag, &headline_key))
                                 .map(str::to_string)
                                 .unwrap_or_else(|| format!("Item {i}"));
-                            
+
                             let builder = if i % 3 == 0 {
                                 let supporting = i18n
                                     .as_ref()
                                     .and_then(|i18n| i18n.translate(language_tag, &supporting_key))
                                     .map(str::to_string)
                                     .unwrap_or_else(|| "Supporting text".to_string());
-                                
+
                                 ListItemBuilder::new(headline)
                                     .two_line()
                                     .supporting_text(supporting)

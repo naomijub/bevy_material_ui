@@ -100,19 +100,78 @@ pub fn spawn_list_section(
                         .with_children(|list| {
                             // 10 list items with translation keys
                             let items = [
-                                ("list_demo.item_1.headline", "Inbox", "list_demo.item_1.supporting", "Primary inbox for emails"),
-                                ("list_demo.item_2.headline", "Starred", "list_demo.item_2.supporting", "Important messages"),
-                                ("list_demo.item_4.headline", "Sent", "list_demo.item_4.supporting", "Outgoing messages"),
-                                ("list_demo.item_3.headline", "Drafts", "list_demo.item_3.supporting", "Unfinished messages"),
-                                ("list_demo.item_6.headline", "Spam", "list_demo.item_6.supporting", "Filtered junk mail"),
-                                ("list_demo.item_5.headline", "Trash", "list_demo.item_5.supporting", "Deleted items"),
-                                ("list_demo.item_17.headline", "Archive", "list_demo.item_17.supporting", "Stored messages"),
-                                ("list_demo.item_19.headline", "Labels", "list_demo.item_19.supporting", "Organized categories"),
-                                ("list_demo.item_20.headline", "Settings", "list_demo.item_20.supporting", "Configuration options"),
-                                ("list_demo.item_7.headline", "Help", "list_demo.item_7.supporting", "Support and documentation"),
+                                (
+                                    "list_demo.item_1.headline",
+                                    "Inbox",
+                                    "list_demo.item_1.supporting",
+                                    "Primary inbox for emails",
+                                ),
+                                (
+                                    "list_demo.item_2.headline",
+                                    "Starred",
+                                    "list_demo.item_2.supporting",
+                                    "Important messages",
+                                ),
+                                (
+                                    "list_demo.item_4.headline",
+                                    "Sent",
+                                    "list_demo.item_4.supporting",
+                                    "Outgoing messages",
+                                ),
+                                (
+                                    "list_demo.item_3.headline",
+                                    "Drafts",
+                                    "list_demo.item_3.supporting",
+                                    "Unfinished messages",
+                                ),
+                                (
+                                    "list_demo.item_6.headline",
+                                    "Spam",
+                                    "list_demo.item_6.supporting",
+                                    "Filtered junk mail",
+                                ),
+                                (
+                                    "list_demo.item_5.headline",
+                                    "Trash",
+                                    "list_demo.item_5.supporting",
+                                    "Deleted items",
+                                ),
+                                (
+                                    "list_demo.item_17.headline",
+                                    "Archive",
+                                    "list_demo.item_17.supporting",
+                                    "Stored messages",
+                                ),
+                                (
+                                    "list_demo.item_19.headline",
+                                    "Labels",
+                                    "list_demo.item_19.supporting",
+                                    "Organized categories",
+                                ),
+                                (
+                                    "list_demo.item_20.headline",
+                                    "Settings",
+                                    "list_demo.item_20.supporting",
+                                    "Configuration options",
+                                ),
+                                (
+                                    "list_demo.item_7.headline",
+                                    "Help",
+                                    "list_demo.item_7.supporting",
+                                    "Support and documentation",
+                                ),
                             ];
 
-                            for (i, (headline_key, headline_default, supporting_key, supporting_default)) in items.iter().enumerate() {
+                            for (
+                                i,
+                                (
+                                    headline_key,
+                                    headline_default,
+                                    supporting_key,
+                                    supporting_default,
+                                ),
+                            ) in items.iter().enumerate()
+                            {
                                 list.spawn((
                                     SelectableListItem,
                                     TestId::new(format!("list_item_{}", i)),

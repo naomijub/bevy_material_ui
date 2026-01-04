@@ -2680,21 +2680,13 @@ fn date_picker_demo_system(
         let label = if let Ok(picker) = pickers.p1().get(display.0) {
             match picker.selection() {
                 Some(DateSelection::Single(date)) => {
-                    format!(
-                        "{prefix} {}-{:02}-{:02}",
-                        date.year, date.month, date.day
-                    )
+                    format!("{prefix} {}-{:02}-{:02}", date.year, date.month, date.day)
                 }
                 Some(DateSelection::Range { start, end }) => {
                     if let Some(end) = end {
                         format!(
                             "{prefix} {}-{:02}-{:02} {to_word} {}-{:02}-{:02}",
-                            start.year,
-                            start.month,
-                            start.day,
-                            end.year,
-                            end.month,
-                            end.day
+                            start.year, start.month, start.day, end.year, end.month, end.day
                         )
                     } else {
                         format!(
