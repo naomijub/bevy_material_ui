@@ -14,7 +14,12 @@ fn main() {
         .run();
 }
 
-fn setup(mut commands: Commands, theme: Res<MaterialTheme>, telemetry: Res<TelemetryConfig>) {
+fn setup(
+    mut commands: Commands,
+    theme: Res<MaterialTheme>,
+    telemetry: Res<TelemetryConfig>,
+    i18n: Option<Res<MaterialI18n>>,
+) {
     commands.spawn(Camera2d);
 
     commands
@@ -53,12 +58,25 @@ fn setup(mut commands: Commands, theme: Res<MaterialTheme>, telemetry: Res<Telem
                     .insert_test_id("list_demo/list", &telemetry)
                     .with_children(|list| {
                         for i in 1..=20 {
+                            let headline_key = format!("list_demo.item_{}.headline", i);
+                            let supporting_key = format!("list_demo.item_{}.supporting", i);
+                            
+                            let headline = i18n
+                                .as_ref()
+                                .and_then(|i18n| i18n.get(&headline_key))
+                                .unwrap_or_else(|| format!("Item {i}"));
+                            
                             let builder = if i % 3 == 0 {
-                                ListItemBuilder::new(format!("Item {i}"))
+                                let supporting = i18n
+                                    .as_ref()
+                                    .and_then(|i18n| i18n.get(&supporting_key))
+                                    .unwrap_or_else(|| "Supporting text".to_string());
+                                
+                                ListItemBuilder::new(headline)
                                     .two_line()
-                                    .supporting_text("Supporting text")
+                                    .supporting_text(supporting)
                             } else {
-                                ListItemBuilder::new(format!("Item {i}")).one_line()
+                                ListItemBuilder::new(headline).one_line()
                             };
 
                             list.spawn_list_item_with(&theme, builder);
