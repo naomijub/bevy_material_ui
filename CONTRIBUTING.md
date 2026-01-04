@@ -53,9 +53,14 @@ cargo bench --bench system_benchmarks
 When submitting PRs that may impact performance:
 
 1. Run the relevant benchmarks locally
-2. Save the benchmark output from `target/criterion/`
-3. Include a summary of benchmark results in your PR description
-4. If there are significant performance changes (>5%), explain why
+2. Copy benchmark data to `benchmarks/results/`:
+   ```bash
+   # Copy estimates for tracking
+   find target/criterion -name "estimates.json" -exec sh -c 'mkdir -p "benchmarks/results/$(dirname {})" && cp {} "benchmarks/results/$(dirname {})"' \;
+   ```
+3. Update `benchmarks/results/README.md` with the date and commit hash
+4. Include a summary of benchmark results in your PR description
+5. If there are significant performance changes (>5%), explain why
 
 Example PR description section:
 ```markdown
@@ -66,6 +71,8 @@ Ran `cargo bench --benches` before and after changes:
 - `hct_to_argb_single`: 2,103 ns/iter → 1,950 ns/iter (-7.3%)
 - `palette_generation`: No significant change
 - `color_scheme_creation`: 15,420 ns/iter → 15,380 ns/iter (~0%)
+
+See `benchmarks/results/` for full data.
 ```
 
 ### Benchmark Output Location
